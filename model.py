@@ -9,10 +9,12 @@ from keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense
 from keras.layers import Input, Reshape, Flatten, Dropout, SpatialDropout3D
 from keras.optimizers import adam
 from keras.models import Model
+
 try:
     from group_norm import GroupNormalization
 except ImportError:
     import urllib.request
+
     print('Downloading group_norm.py in the current directory...')
     url = 'https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py'
     urllib.request.urlretrieve(url, "group_norm.py")
@@ -107,9 +109,9 @@ def sampling(args):
 
 
 def dice_coefficient(y_true, y_pred):
-    intersection = K.sum(K.abs(y_true * y_pred), axis=[-3,-2,-1])
-    dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3,-2,-1]) + 1e-8
-    return K.mean(2 * intersection / dn, axis=[0,1])
+    intersection = K.sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
+    dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + 1e-8
+    return K.mean(2 * intersection / dn, axis=[0, 1])
 
 
 def loss_gt(e=1e-8):
@@ -136,13 +138,15 @@ def loss_gt(e=1e-8):
         to calculate the dice loss.
         
     """
+
     def loss_gt_(y_true, y_pred):
-        intersection = K.sum(K.abs(y_true * y_pred), axis=[-3,-2,-1])
-        dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3,-2,-1]) + e
-        
-        return - K.mean(2 * intersection / dn, axis=[0,1])
-    
+        intersection = K.sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
+        dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + e
+
+        return - K.mean(2 * intersection / dn, axis=[0, 1])
+
     return loss_gt_
+
 
 def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
     """
@@ -181,11 +185,12 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
         to calculate the L2 and KL loss.
         
     """
+
     def loss_VAE_(y_true, y_pred):
         c, H, W, D = input_shape
         n = c * H * W * D
-        
-        loss_L2 = K.mean(K.square(y_true - y_pred), axis=(1, 2, 3, 4)) # original axis value is (1,2,3,4).
+
+        loss_L2 = K.mean(K.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
 
         loss_KL = (1 / n) * K.sum(
             K.exp(z_var) + K.square(z_mean) - 1. - z_var,
@@ -195,6 +200,7 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
         return weight_L2 * loss_L2 + weight_KL * loss_KL
 
     return loss_VAE_
+
 
 def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
     """
@@ -232,7 +238,6 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     assert (c % 4) == 0, "The no. of channels must be divisible by 4"
     assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
         "All the input dimensions must be divisible by 16"
-
 
     # -------------------------------------------------------------------------
     # Encoder
@@ -382,9 +387,9 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
 
     ### VU Block (Upsizing back to a depth of 256)
-    x = Dense((c//4) * (H//16) * (W//16) * (D//16))(x)
+    x = Dense((c // 4) * (H // 16) * (W // 16) * (D // 16))(x)
     x = Activation('relu')(x)
-    x = Reshape(((c//4), (H//16), (W//16), (D//16)))(x)
+    x = Reshape(((c // 4), (H // 16), (W // 16), (D // 16)))(x)
     x = Conv3D(
         filters=256,
         kernel_size=(1, 1, 1),
@@ -450,7 +455,7 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
         kernel_size=(1, 1, 1),
         strides=1,
         data_format='channels_first',
-        name='Dec_VAE_Output')(x) 
+        name='Dec_VAE_Output')(x)
 
     # Build and Compile the model
     out = out_GT
