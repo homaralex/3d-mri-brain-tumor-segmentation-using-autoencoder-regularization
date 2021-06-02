@@ -38,12 +38,9 @@ def resize(img, shape, mode='constant', orig_shape=(155, 240, 240)):
 
 
 def preprocess(img, out_shape=None, augment=True):
-    if out_shape is not None:
-        img = resize(img, out_shape, mode='constant')
-
-    # Normalize the image
-    mean = img.mean()
-    std = img.std()
+    # normalize the image (based on non-zero voxels)
+    mean = img[img != 0].mean()
+    std = img[img != 0].std()
 
     if augment:
         # random intensity and scale shifts
@@ -55,7 +52,12 @@ def preprocess(img, out_shape=None, augment=True):
             if random.getrandbits(1):
                 img = np.flip(img, axis=ax_idx)
 
-    return (img - mean) / std
+    img = (img - mean) / std
+
+    if out_shape is not None:
+        img = resize(img, out_shape, mode='constant')
+
+    return img
 
 
 def preprocess_label(img, out_shape=None, mode='nearest'):
