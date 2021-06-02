@@ -4,6 +4,7 @@ import re  # For parsing the filenames (to know their modality)
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
 import keras.callbacks as k_callbacks
@@ -66,9 +67,17 @@ def preprocess_label(img, out_shape=None, mode='nearest'):
     return np.array([ncr, ed, et], dtype=np.uint8)
 
 
-BRATS_TRAIN = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
-# TODO
-BRATS_VAL = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
+def save_preds(model, data, model_dir):
+    data, _ = next(data_gen(data, 1))
+
+    ret = model.predict(data)
+
+    plt.imshow(ret[0][0][0][20], cmap='Greys_r')
+    plt.savefig(model_dir / 'segmentation.png')
+    plt.imshow(ret[1][0][0][20], cmap='Greys_r')
+    plt.savefig(model_dir / 'reconstruction.png')
+    plt.imshow(data[0][0][20], cmap='Greys_r')
+    plt.savefig(model_dir / 'original.png')
 
 
 def get_paths(path_root):
@@ -86,19 +95,6 @@ def get_paths(path_root):
         for item in items
     }
         for items in list(zip(t1, t2, t1ce, flair, seg))]
-
-
-data_paths_train = get_paths(BRATS_TRAIN)
-data_paths_val = get_paths(BRATS_VAL)
-
-# TODO
-max_samples = 2
-data_paths_train = data_paths_train[:max_samples]
-data_paths_val = data_paths_train
-
-# TODO input shape
-input_shape = (4, 32, 32, 16)
-output_channels = 3
 
 
 def data_gen(
@@ -137,6 +133,22 @@ def data_gen(
             yield yield_batch()
 
 
+BRATS_TRAIN = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
+# TODO
+BRATS_VAL = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
+
+data_paths_train = get_paths(BRATS_TRAIN)
+data_paths_val = get_paths(BRATS_VAL)
+
+# TODO
+max_samples = 2
+data_paths_train = data_paths_train[:max_samples]
+data_paths_val = data_paths_train
+
+# TODO input shape
+input_shape = (4, 32, 32, 16)
+output_channels = 3
+
 # TODO parameterize loss weights etc
 model = build_model(input_shape=input_shape, output_channels=3)
 # TODO parameterize epochs, batch_size
@@ -147,7 +159,7 @@ model_dir.mkdir(exist_ok=True, parents=True)
 model.fit_generator(
     data_gen(data_paths_train, batch_size=batch_size),
     # TODO
-    epochs=8,
+    epochs=1,
     steps_per_epoch=len(data_paths_train) // batch_size,
     validation_data=data_gen(data_paths_val, batch_size=batch_size),
     validation_steps=len(data_paths_val) // batch_size,
@@ -163,4 +175,10 @@ model.fit_generator(
             save_best_only=True,
         ),
     ],
+)
+
+save_preds(
+    model=model,
+    data=data_paths_val,
+    model_dir=model_dir,
 )
