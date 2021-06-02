@@ -2,6 +2,7 @@
 # 3D MRI Brain Tumor Segmentation Using Autoencoder Regularization
 # by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
+import gin
 import keras
 import keras.backend as K
 from keras.losses import mse
@@ -202,7 +203,14 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
     return loss_VAE_
 
 
-def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
+@gin.configurable(allowlist=['weight_L2', 'weight_KL'])
+def build_model(
+        input_shape=(4, 160, 192, 128),
+        output_channels=3,
+        weight_L2=0.1,
+        weight_KL=0.1,
+        dice_e=1e-8,
+):
     """
     build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1)
     -------------------------------------------
