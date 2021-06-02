@@ -244,7 +244,7 @@ def build_model(
     """
     c, H, W, D = input_shape
     assert len(input_shape) == 4, "Input shape must be a 4-tuple"
-    assert (c % 4) == 0, "The no. of channels must be divisible by 4"
+    # assert (c % 4) == 0, "The no. of channels must be divisible by 4"
     assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
         "All the input dimensions must be divisible by 16"
 
@@ -400,9 +400,9 @@ def build_model(
     x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
 
     ### VU Block (Upsizing back to a depth of 256)
-    x = Dense((c // 4) * (H // 16) * (W // 16) * (D // 16))(x)
+    x = Dense((H // 16) * (W // 16) * (D // 16))(x)
     x = Activation('relu')(x)
-    x = Reshape(((c // 4), (H // 16), (W // 16), (D // 16)))(x)
+    x = Reshape((1, (H // 16), (W // 16), (D // 16)))(x)
     x = Conv3D(
         filters=256,
         kernel_size=(1, 1, 1),
@@ -464,7 +464,7 @@ def build_model(
 
     ### Output Block
     out_VAE = Conv3D(
-        filters=4,
+        filters=c,
         kernel_size=(1, 1, 1),
         strides=1,
         data_format='channels_first',
