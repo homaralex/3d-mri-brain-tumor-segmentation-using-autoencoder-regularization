@@ -161,6 +161,7 @@ def train(
 
     model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
     model_dir.mkdir(exist_ok=True, parents=True)
+    print(f'Model dir: {str(model_dir)}')
 
     model = build_model(input_shape=input_shape, output_channels=3)
     model.summary()
@@ -182,13 +183,14 @@ def train(
                 verbose=1,
                 save_best_only=True,
             ),
+            k_callbacks.LambdaCallback(
+                on_epoch_end=lambda epoch, logs: save_preds(
+                    model=model,
+                    data=data_paths_val,
+                    model_dir=model_dir,
+                ),
+            )
         ],
-    )
-
-    save_preds(
-        model=model,
-        data=data_paths_val,
-        model_dir=model_dir,
     )
 
 
