@@ -1,9 +1,11 @@
+import argparse
 import random
 import glob  # For populating the list of files
 import re  # For parsing the filenames (to know their modality)
 from datetime import datetime
 from pathlib import Path
 
+import gin
 import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
@@ -97,10 +99,12 @@ def get_paths(path_root):
         for items in list(zip(t1, t2, t1ce, flair, seg))]
 
 
+@gin.configurable(denylist=['data_paths'])
 def data_gen(
         data_paths,
         batch_size,
-        modalities=('t1', 't2', 't1ce', 'flair'),
+        input_shape,
+        modalities,
 ):
     xs, ys = [], []
 
@@ -133,54 +137,70 @@ def data_gen(
             yield yield_batch()
 
 
-BRATS_TRAIN = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
-# TODO
-BRATS_VAL = '../data/brain-mri/brats/MICCAI_BraTS_2018_Data_Training/'
+@gin.configurable
+def train(
+        brats_train_dir=gin.REQUIRED,
+        brats_val_dir=gin.REQUIRED,
+        model_name='ResNet3DVAE_Brats',
+        input_shape=(160, 192, 128),
+        modalities=('t1', 't2', 't1ce', 'flair'),
+        batch_size=1,
+        epochs=1,
+        # for debugging purposes
+        max_samples=None,
+):
+    assert len(input_shape) == 3
+    input_shape = (len(modalities),) + input_shape
+    gin.bind_parameter('data_gen.input_shape', input_shape)
+    gin.bind_parameter('data_gen.batch_size', batch_size)
+    gin.bind_parameter('data_gen.modalities', modalities)
 
-data_paths_train = get_paths(BRATS_TRAIN)
-data_paths_val = get_paths(BRATS_VAL)
+    data_paths_train = get_paths(brats_train_dir)[:max_samples]
+    data_paths_val = get_paths(brats_val_dir)[:max_samples]
+    print(f'Train samples: {len(data_paths_train)}\nVal samples: {len(data_paths_val)}')
 
-# TODO
-max_samples = 2
-data_paths_train = data_paths_train[:max_samples]
-data_paths_val = data_paths_train
+    model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    model_dir.mkdir(exist_ok=True, parents=True)
 
-# TODO input shape
-input_shape = (4, 32, 32, 16)
-output_channels = 3
+    # TODO parameterize loss weights etc
+    model = build_model(input_shape=input_shape, output_channels=3)
+    model.summary()
 
-# TODO parameterize loss weights etc
-model = build_model(input_shape=input_shape, output_channels=3)
-model.summary()
+    model.fit_generator(
+        data_gen(data_paths_train),
+        epochs=epochs,
+        steps_per_epoch=len(data_paths_train) // batch_size,
+        validation_data=data_gen(data_paths_val),
+        validation_steps=len(data_paths_val) // batch_size,
+        callbacks=[
+            k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
+            k_callbacks.ModelCheckpoint(
+                filepath=str(model_dir / 'model.hdf5'),
+                verbose=1,
+            ),
+            k_callbacks.ModelCheckpoint(
+                filepath=str(model_dir / 'model_best.hdf5'),
+                verbose=1,
+                save_best_only=True,
+            ),
+        ],
+    )
 
-# TODO parameterize epochs, batch_size
-batch_size = 1
-# TODO parameterize subdir
-model_dir = Path('models') / 'ResNet3DVAE_Brats' / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-model_dir.mkdir(exist_ok=True, parents=True)
-model.fit_generator(
-    data_gen(data_paths_train, batch_size=batch_size),
-    # TODO
-    epochs=1,
-    steps_per_epoch=len(data_paths_train) // batch_size,
-    validation_data=data_gen(data_paths_val, batch_size=batch_size),
-    validation_steps=len(data_paths_val) // batch_size,
-    callbacks=[
-        k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
-        k_callbacks.ModelCheckpoint(
-            filepath=str(model_dir / 'model.hdf5'),
-            verbose=1,
-        ),
-        k_callbacks.ModelCheckpoint(
-            filepath=str(model_dir / 'model_best.hdf5'),
-            verbose=1,
-            save_best_only=True,
-        ),
-    ],
-)
+    save_preds(
+        model=model,
+        data=data_paths_val,
+        model_dir=model_dir,
+    )
 
-save_preds(
-    model=model,
-    data=data_paths_val,
-    model_dir=model_dir,
-)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'config',
+        type=str,
+    )
+    args = parser.parse_args()
+
+    gin.parse_config_file(args.config)
+
+    train()
