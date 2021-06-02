@@ -1,12 +1,15 @@
 import random
+import glob  # For populating the list of files
+import re  # For parsing the filenames (to know their modality)
+from datetime import datetime
+from pathlib import Path
 
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
-from model import build_model  # For creating the model
-import glob  # For populating the list of files
+import keras.callbacks as k_callbacks
 from scipy.ndimage import zoom  # For resizing
-import re  # For parsing the filenames (to know their modality)
-import math
+
+from model import build_model  # For creating the model
 
 
 def read_img(img_path):
@@ -138,12 +141,26 @@ def data_gen(
 model = build_model(input_shape=input_shape, output_channels=3)
 # TODO parameterize epochs, batch_size
 batch_size = 1
+# TODO parameterize subdir
+model_dir = Path('models') / 'ResNet3DVAE_Brats' / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+model_dir.mkdir(exist_ok=True, parents=True)
 model.fit_generator(
     data_gen(data_paths_train, batch_size=batch_size),
+    # TODO
     epochs=8,
     steps_per_epoch=len(data_paths_train) // batch_size,
     validation_data=data_gen(data_paths_val, batch_size=batch_size),
     validation_steps=len(data_paths_val) // batch_size,
+    callbacks=[
+        k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
+        k_callbacks.ModelCheckpoint(
+            filepath=str(model_dir / 'model.hdf5'),
+            verbose=1,
+        ),
+        k_callbacks.ModelCheckpoint(
+            filepath=str(model_dir / 'model_best.hdf5'),
+            verbose=1,
+            save_best_only=True,
+        ),
+    ],
 )
-# TODO path
-model.save('model.h5')
