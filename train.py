@@ -37,17 +37,24 @@ def resize(img, shape, mode='constant', orig_shape=(155, 240, 240)):
     return zoom(img, factors, mode=mode)
 
 
-def preprocess(img, out_shape=None):
-    """
-    Preprocess the image.
-    Just an example, you can add more preprocessing steps if you wish to.
-    """
+def preprocess(img, out_shape=None, augment=True):
     if out_shape is not None:
         img = resize(img, out_shape, mode='constant')
 
     # Normalize the image
     mean = img.mean()
     std = img.std()
+
+    if augment:
+        # random intensity and scale shifts
+        mean += std * np.random.uniform(-.1, .1)
+        std *= np.random.uniform(.9, 1.1)
+
+        # random axis flipping
+        for ax_idx in range(3):
+            if random.getrandbits(1):
+                img = np.flip(img, axis=ax_idx)
+
     return (img - mean) / std
 
 
