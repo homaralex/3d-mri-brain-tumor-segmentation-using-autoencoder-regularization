@@ -145,7 +145,7 @@ def train(
         input_shape=(160, 192, 128),
         modalities=('t1', 't2', 't1ce', 'flair'),
         batch_size=1,
-        epochs=1,
+        epochs=300,
         # for debugging purposes
         max_samples=None,
 ):
@@ -162,7 +162,6 @@ def train(
     model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
     model_dir.mkdir(exist_ok=True, parents=True)
 
-    # TODO parameterize loss weights etc
     model = build_model(input_shape=input_shape, output_channels=3)
     model.summary()
 

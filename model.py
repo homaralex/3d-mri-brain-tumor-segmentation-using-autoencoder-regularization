@@ -5,9 +5,8 @@
 import gin
 import keras
 import keras.backend as K
-from keras.losses import mse
 from keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
-from keras.layers import Input, Reshape, Flatten, Dropout, SpatialDropout3D
+from keras.layers import Input, Reshape, Flatten, SpatialDropout3D
 from keras.optimizers import adam
 from keras.models import Model
 
@@ -203,12 +202,14 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
     return loss_VAE_
 
 
-@gin.configurable(allowlist=['weight_L2', 'weight_KL'])
+@gin.configurable(name_or_fn='optim', allowlist=['weight_L2', 'weight_KL', 'adam_lr', 'adam_decay'])
 def build_model(
         input_shape=(4, 160, 192, 128),
         output_channels=3,
         weight_L2=0.1,
         weight_KL=0.1,
+        adam_lr=1e-4,
+        adam_decay=.9,
         dice_e=1e-8,
 ):
     """
@@ -473,7 +474,7 @@ def build_model(
     out = out_GT
     model = Model(inp, outputs=[out, out_VAE])  # Create the model
     model.compile(
-        adam(lr=1e-4),
+        adam(lr=adam_lr, decay=adam_decay),
         [loss_gt(dice_e), loss_VAE(input_shape, z_mean, z_var, weight_L2=weight_L2, weight_KL=weight_KL)],
         metrics=[dice_coefficient]
     )
