@@ -149,7 +149,8 @@ def data_gen(
 @gin.configurable
 def train(
         brats_train_dir=gin.REQUIRED,
-        brats_val_dir=gin.REQUIRED,
+        brats_val_dir=None,
+        val_ratio=.2,
         model_name='ResNet3DVAE_Brats',
         input_shape=(160, 192, 128),
         modalities=('t1', 't2', 't1ce', 'flair'),
@@ -164,8 +165,15 @@ def train(
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
 
-    data_paths_train = get_paths(brats_train_dir)[:max_samples]
-    data_paths_val = get_paths(brats_val_dir)[:max_samples]
+    data_paths_train = get_paths(brats_train_dir)
+    if brats_val_dir is None:
+        random.shuffle(data_paths_train)
+        stop_idx = int(val_ratio * len(data_paths_train))
+        data_paths_val = data_paths_train[:stop_idx][:max_samples]
+        data_paths_train = data_paths_train[stop_idx:]
+    else:
+        data_paths_val = get_paths(brats_val_dir)[:max_samples]
+    data_paths_train = data_paths_train[:max_samples]
     print(f'Train samples: {len(data_paths_train)}\nVal samples: {len(data_paths_val)}')
 
     model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
