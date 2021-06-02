@@ -162,6 +162,8 @@ def train(
     model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
     model_dir.mkdir(exist_ok=True, parents=True)
     print(f'Model dir: {str(model_dir)}')
+    # save the gin config to file
+    print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
     model = build_model(input_shape=input_shape, output_channels=3)
     model.summary()
