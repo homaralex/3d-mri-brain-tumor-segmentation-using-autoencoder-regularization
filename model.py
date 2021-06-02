@@ -2,7 +2,7 @@
 # 3D MRI Brain Tumor Segmentation Using Autoencoder Regularization
 # by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
-
+import keras
 import keras.backend as K
 from keras.losses import mse
 from keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
@@ -471,3 +471,9 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     )
 
     return model
+
+
+def get_vae_predictions(model, data):
+    # https://keras.io/getting_started/faq/#how-can-i-obtain-the-output-of-an-intermediate-layer-feature-extraction
+    intermediate_layer_model = keras.Model(inputs=model.input, outputs=model.get_layer('Dec_VAE_VDraw_Mean').output)
+    return intermediate_layer_model.predict(data)
