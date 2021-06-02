@@ -151,6 +151,7 @@ output_channels = 3
 
 # TODO parameterize loss weights etc
 model = build_model(input_shape=input_shape, output_channels=3)
+model.summary()
 # TODO parameterize epochs, batch_size
 batch_size = 1
 # TODO parameterize subdir
