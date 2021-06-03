@@ -102,9 +102,13 @@ def sampling(args):
 
 
 def dice_coefficient(y_true, y_pred):
-    intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=[-3, -2, -1])
-    dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=[-3, -2, -1]) + 1e-8
-    return tf.reduce_mean(2 * intersection / dn, axis=[0, 1])
+    # TODO make this an argument
+    data_format = 'channels_last'
+    axes = [-3, -2, -1] if data_format == 'channels_first' else [-4, -3, -2]
+
+    intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=axes)
+    dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=axes) + 1e-8
+    return tf.reduce_mean(2 * intersection / dn)
 
 
 def loss_gt(e=1e-8):
@@ -133,10 +137,14 @@ def loss_gt(e=1e-8):
     """
 
     def loss_gt_(y_true, y_pred):
-        intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=[-3, -2, -1])
-        dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=[-3, -2, -1]) + e
+        # TODO make this an argument
+        data_format = 'channels_last'
+        axes = [-3, -2, -1] if data_format == 'channels_first' else [-4, -3, -2]
 
-        return - tf.reduce_mean(2 * intersection / dn, axis=[0, 1])
+        intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=axes)
+        dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=axes) + e
+
+        return - tf.reduce_mean(2 * intersection / dn)
 
     return loss_gt_
 
@@ -185,7 +193,6 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
 
         loss_L2 = tf.reduce_mean(tf.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
 
-        # TODO maybe reduce_mean instead
         loss_KL = (1 / n) * tf.reduce_sum(
             tf.exp(z_var) + tf.square(z_mean) - 1. - z_var,
             axis=-1
