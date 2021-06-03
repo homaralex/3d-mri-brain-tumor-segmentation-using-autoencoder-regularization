@@ -198,7 +198,7 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
 
 @gin.configurable(name_or_fn='optim', allowlist=['weight_L2', 'weight_KL', 'adam_lr', 'adam_decay'])
 def build_model(
-        input_shape=(4, 160, 192, 128),
+        input_shape=(160, 192, 128, 4),
         output_channels=3,
         weight_L2=0.1,
         weight_KL=0.1,
