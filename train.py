@@ -78,17 +78,30 @@ def preprocess_label(img, out_shape=None, mode='nearest'):
     return np.array([ncr, ed, et], dtype=np.float32)
 
 
-def save_preds(model, data, model_dir):
+def save_preds(
+        model,
+        data,
+        model_dir,
+        data_format,
+):
     data, _ = next(data_gen(data, 1))
 
     ret = model.predict(data)
 
-    plt.imshow(ret[0][0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'segmentation.png')
-    plt.imshow(ret[1][0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'reconstruction.png')
-    plt.imshow(data[0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'original.png')
+    if data_format == 'channels_first':
+        plt.imshow(ret[0][0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
+    else:
+        plt.imshow(ret[0][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
 
 
 def get_paths(path_root):
@@ -169,7 +182,7 @@ def train(
 ):
     assert len(input_shape) == 3
     input_shape = (len(modalities),) + input_shape if data_format == 'channels_first' else input_shape + (
-    len(modalities),)
+        len(modalities),)
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
@@ -217,6 +230,7 @@ def train(
                     model=model,
                     data=data_paths_val,
                     model_dir=model_dir,
+                    data_format=data_format,
                 ),
             )
         ],
