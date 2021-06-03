@@ -75,7 +75,7 @@ def preprocess_label(img, out_shape=None, mode='nearest'):
         ed = resize(ed, out_shape, mode=mode)
         et = resize(et, out_shape, mode=mode)
 
-    return np.array([ncr, ed, et], dtype=np.uint8)
+    return np.array([ncr, ed, et], dtype=np.float32)
 
 
 def save_preds(model, data, model_dir):
@@ -116,19 +116,27 @@ def data_gen(
         modalities,
 ):
     xs, ys = [], []
+    # TODO
+    data_format = 'channels_last'
+    out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
-    def yield_batch():
-        return np.array(xs), [np.concatenate([y[0] for y in ys]), np.array([y[1] for y in ys])]
+    def yield_batch(xs, ys):
+        xs, ys = np.array(xs), [np.concatenate([y[0] for y in ys]), np.array([y[1] for y in ys])]
+
+        if data_format == 'channels_last':
+            xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
+
+        return xs, ys
 
     while True:
         shuffled_paths = random.sample(data_paths, len(data_paths))
         for imgs in shuffled_paths:
             try:
                 x = np.array(
-                    [preprocess(read_img(imgs[m]), input_shape[1:]) for m in modalities],
+                    [preprocess(read_img(imgs[m]), out_shape) for m in modalities],
                     dtype=np.float32,
                 )
-                y = preprocess_label(read_img(imgs['seg']), input_shape[1:])[None, ...]
+                y = preprocess_label(read_img(imgs['seg']), out_shape)[None, ...]
             except Exception as e:
                 print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
                 continue
@@ -138,12 +146,12 @@ def data_gen(
             ys.append([y, x])
 
             if len(xs) == batch_size:
-                yield yield_batch()
+                yield yield_batch(xs, ys)
                 xs, ys = [], []
 
         # in case of the last batch being smaller than batch_size
         if len(xs) > 0:
-            yield yield_batch()
+            yield yield_batch(xs, ys)
 
 
 @gin.configurable
@@ -160,7 +168,10 @@ def train(
         max_samples=None,
 ):
     assert len(input_shape) == 3
-    input_shape = (len(modalities),) + input_shape
+    # TODO
+    data_format = 'channels_last'
+    input_shape = (len(modalities),) + input_shape if data_format == 'channels_first' else input_shape + (
+    len(modalities),)
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
@@ -183,9 +194,9 @@ def train(
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
     model = build_model(input_shape=input_shape, output_channels=3)
-    model.summary()
+    # model.summary()
 
-    model.fit_generator(
+    model.fit(
         data_gen(data_paths_train),
         epochs=epochs,
         steps_per_epoch=len(data_paths_train) // batch_size,
@@ -223,4 +234,7 @@ if __name__ == '__main__':
 
     gin.parse_config_file(args.config)
 
+    from tensorflow.python.framework.ops import disable_eager_execution
+
+    disable_eager_execution()
     train()
