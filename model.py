@@ -4,8 +4,7 @@
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
 import gin
 import tensorflow.keras as keras
-# import tensorflow.keras.backend as K
-import tensorflow as K
+import tensorflow as tf
 from tensorflow.keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
 from tensorflow.keras.layers import Input, Reshape, Flatten, SpatialDropout3D
 from tensorflow.keras.optimizers import Adam as adam
@@ -13,7 +12,7 @@ from tensorflow.keras.models import Model
 from tensorflow_addons.layers import GroupNormalization
 
 
-def green_block(inp, filters, data_format='channels_first', name=None):
+def green_block(inp, filters, data_format='channels_last', name=None):
     """
     green_block(inp, filters, name=None)
     ------------------------------------
@@ -93,19 +92,19 @@ def sampling(args):
         z (tensor): sampled latent vector
     """
     z_mean, z_var = args
-    batch = K.shape(z_mean)[0]
+    batch = tf.shape(z_mean)[0]
     # dim = K.int_shape(z_mean)[1]
-    dim = K.shape(z_mean)[1]
+    dim = tf.shape(z_mean)[1]
     # by default, random_normal has mean = 0 and std = 1.0
     # epsilon = K.random_normal(shape=(batch, dim))
-    epsilon = K.random.normal(shape=(batch, dim))
-    return z_mean + K.exp(0.5 * z_var) * epsilon
+    epsilon = tf.random.normal(shape=(batch, dim))
+    return z_mean + tf.exp(0.5 * z_var) * epsilon
 
 
 def dice_coefficient(y_true, y_pred):
-    intersection = K.reduce_sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
-    dn = K.reduce_sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + 1e-8
-    return K.reduce_mean(2 * intersection / dn, axis=[0, 1])
+    intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=[-3, -2, -1])
+    dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=[-3, -2, -1]) + 1e-8
+    return tf.reduce_mean(2 * intersection / dn, axis=[0, 1])
 
 
 def loss_gt(e=1e-8):
@@ -134,10 +133,10 @@ def loss_gt(e=1e-8):
     """
 
     def loss_gt_(y_true, y_pred):
-        intersection = K.reduce_sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
-        dn = K.reduce_sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + e
+        intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=[-3, -2, -1])
+        dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=[-3, -2, -1]) + e
 
-        return - K.reduce_mean(2 * intersection / dn, axis=[0, 1])
+        return - tf.reduce_mean(2 * intersection / dn, axis=[0, 1])
 
     return loss_gt_
 
@@ -184,10 +183,11 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
         c, H, W, D = input_shape
         n = c * H * W * D
 
-        loss_L2 = K.reduce_mean(K.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
+        loss_L2 = tf.reduce_mean(tf.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
 
-        loss_KL = (1 / n) * K.reduce_sum(
-            K.exp(z_var) + K.square(z_mean) - 1. - z_var,
+        # TODO maybe reduce_mean instead
+        loss_KL = (1 / n) * tf.reduce_sum(
+            tf.exp(z_var) + tf.square(z_mean) - 1. - z_var,
             axis=-1
         )
 
