@@ -270,7 +270,8 @@ def build_model(
         name='Input_x1')(inp)
 
     ## Dropout (0.2)
-    # x = SpatialDropout3D(0.2, data_format=data_format)(x)
+    # this seems to run only with tensorflow 2.3 (not older or newer!)
+    x = SpatialDropout3D(0.2, data_format=data_format)(x)
 
     ## Green Block x1 (output filters = 32)
     x1 = green_block(x, 32, name='x1', data_format=data_format)

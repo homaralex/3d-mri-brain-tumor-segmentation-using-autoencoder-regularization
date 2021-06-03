@@ -9,8 +9,9 @@ import gin
 import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
-import keras.callbacks as k_callbacks
+import tensorflow.keras.callbacks as k_callbacks
 from scipy.ndimage import zoom  # For resizing
+from tensorflow.python.framework.ops import disable_eager_execution
 
 from model import build_model  # For creating the model
 
@@ -246,9 +247,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     gin.parse_config_file(args.config)
-
-    # TODO
-    from tensorflow.python.framework.ops import disable_eager_execution
 
     disable_eager_execution()
     train()
