@@ -19,19 +19,20 @@ from model import build_model  # For creating the model
 def read_img(img_path):
     """
     Reads a .nii.gz image and returns as a numpy array.
+    Added: transpose it to match the paper implementation dimension order.
     """
-    return sitk.GetArrayFromImage(sitk.ReadImage(img_path))
+    return sitk.GetArrayFromImage(sitk.ReadImage(img_path)).T
 
 
-def resize(img, shape, mode='constant', orig_shape=(155, 240, 240)):
+def resize(img, shape, mode='constant'):
     """
     Wrapper for scipy.ndimage.zoom suited for MRI images.
     """
     assert len(shape) == 3, "Can not have more than 3 dimensions"
     factors = (
-        shape[0] / orig_shape[0],
-        shape[1] / orig_shape[1],
-        shape[2] / orig_shape[2]
+        shape[0] / img.shape[0],
+        shape[1] / img.shape[1],
+        shape[2] / img.shape[2]
     )
 
     # Resize to the given shape
