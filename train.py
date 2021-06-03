@@ -114,10 +114,9 @@ def data_gen(
         batch_size,
         input_shape,
         modalities,
+        data_format,
 ):
     xs, ys = [], []
-    # TODO
-    data_format = 'channels_last'
     out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
     def yield_batch(xs, ys):
@@ -161,6 +160,7 @@ def train(
         val_ratio=.2,
         model_name='ResNet3DVAE_Brats',
         input_shape=(160, 192, 128),
+        data_format='channels_last',
         modalities=('t1', 't2', 't1ce', 'flair'),
         batch_size=1,
         epochs=300,
@@ -168,13 +168,12 @@ def train(
         max_samples=None,
 ):
     assert len(input_shape) == 3
-    # TODO
-    data_format = 'channels_last'
     input_shape = (len(modalities),) + input_shape if data_format == 'channels_first' else input_shape + (
     len(modalities),)
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
+    gin.bind_parameter('data_gen.data_format', data_format)
 
     data_paths_train = get_paths(brats_train_dir)
     if brats_val_dir is None:
@@ -193,7 +192,7 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = build_model(input_shape=input_shape, output_channels=3)
+    model = build_model(input_shape=input_shape, output_channels=3, data_format=data_format)
     # model.summary()
 
     model.fit(
@@ -234,6 +233,7 @@ if __name__ == '__main__':
 
     gin.parse_config_file(args.config)
 
+    # TODO
     from tensorflow.python.framework.ops import disable_eager_execution
 
     disable_eager_execution()
