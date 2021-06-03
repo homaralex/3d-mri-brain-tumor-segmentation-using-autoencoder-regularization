@@ -9,8 +9,9 @@ import gin
 import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
-import keras.callbacks as k_callbacks
+import tensorflow.keras.callbacks as k_callbacks
 from scipy.ndimage import zoom  # For resizing
+from tensorflow.python.framework.ops import disable_eager_execution
 
 from model import build_model  # For creating the model
 
@@ -75,20 +76,33 @@ def preprocess_label(img, out_shape=None, mode='nearest'):
         ed = resize(ed, out_shape, mode=mode)
         et = resize(et, out_shape, mode=mode)
 
-    return np.array([ncr, ed, et], dtype=np.uint8)
+    return np.array([ncr, ed, et], dtype=np.float32)
 
 
-def save_preds(model, data, model_dir):
+def save_preds(
+        model,
+        data,
+        model_dir,
+        data_format,
+):
     data, _ = next(data_gen(data, 1))
 
     ret = model.predict(data)
 
-    plt.imshow(ret[0][0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'segmentation.png')
-    plt.imshow(ret[1][0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'reconstruction.png')
-    plt.imshow(data[0][0][20], cmap='Greys_r')
-    plt.savefig(model_dir / 'original.png')
+    if data_format == 'channels_first':
+        plt.imshow(ret[0][0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
+    else:
+        plt.imshow(ret[0][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][:, :, :, 0][20], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
 
 
 def get_paths(path_root):
@@ -114,21 +128,28 @@ def data_gen(
         batch_size,
         input_shape,
         modalities,
+        data_format,
 ):
     xs, ys = [], []
+    out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
-    def yield_batch():
-        return np.array(xs), [np.concatenate([y[0] for y in ys]), np.array([y[1] for y in ys])]
+    def yield_batch(xs, ys):
+        xs, ys = np.array(xs), [np.concatenate([y[0] for y in ys]), np.array([y[1] for y in ys])]
+
+        if data_format == 'channels_last':
+            xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
+
+        return xs, ys
 
     while True:
         shuffled_paths = random.sample(data_paths, len(data_paths))
         for imgs in shuffled_paths:
             try:
                 x = np.array(
-                    [preprocess(read_img(imgs[m]), input_shape[1:]) for m in modalities],
+                    [preprocess(read_img(imgs[m]), out_shape) for m in modalities],
                     dtype=np.float32,
                 )
-                y = preprocess_label(read_img(imgs['seg']), input_shape[1:])[None, ...]
+                y = preprocess_label(read_img(imgs['seg']), out_shape)[None, ...]
             except Exception as e:
                 print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
                 continue
@@ -138,12 +159,12 @@ def data_gen(
             ys.append([y, x])
 
             if len(xs) == batch_size:
-                yield yield_batch()
+                yield yield_batch(xs, ys)
                 xs, ys = [], []
 
         # in case of the last batch being smaller than batch_size
         if len(xs) > 0:
-            yield yield_batch()
+            yield yield_batch(xs, ys)
 
 
 @gin.configurable
@@ -153,6 +174,7 @@ def train(
         val_ratio=.2,
         model_name='ResNet3DVAE_Brats',
         input_shape=(160, 192, 128),
+        data_format='channels_last',
         modalities=('t1', 't2', 't1ce', 'flair'),
         batch_size=1,
         epochs=300,
@@ -160,10 +182,12 @@ def train(
         max_samples=None,
 ):
     assert len(input_shape) == 3
-    input_shape = (len(modalities),) + input_shape
+    input_shape = (len(modalities),) + input_shape if data_format == 'channels_first' else input_shape + (
+        len(modalities),)
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
+    gin.bind_parameter('data_gen.data_format', data_format)
 
     data_paths_train = get_paths(brats_train_dir)
     if brats_val_dir is None:
@@ -182,10 +206,10 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = build_model(input_shape=input_shape, output_channels=3)
-    model.summary()
+    model = build_model(input_shape=input_shape, output_channels=3, data_format=data_format)
+    # model.summary()
 
-    model.fit_generator(
+    model.fit(
         data_gen(data_paths_train),
         epochs=epochs,
         steps_per_epoch=len(data_paths_train) // batch_size,
@@ -207,6 +231,7 @@ def train(
                     model=model,
                     data=data_paths_val,
                     model_dir=model_dir,
+                    data_format=data_format,
                 ),
             )
         ],
@@ -223,4 +248,5 @@ if __name__ == '__main__':
 
     gin.parse_config_file(args.config)
 
+    disable_eager_execution()
     train()

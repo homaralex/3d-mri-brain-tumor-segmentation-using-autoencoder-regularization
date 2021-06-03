@@ -3,25 +3,16 @@
 # by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
 import gin
-import keras
-import keras.backend as K
-from keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
-from keras.layers import Input, Reshape, Flatten, SpatialDropout3D
-from keras.optimizers import adam
-from keras.models import Model
-
-try:
-    from group_norm import GroupNormalization
-except ImportError:
-    import urllib.request
-
-    print('Downloading group_norm.py in the current directory...')
-    url = 'https://raw.githubusercontent.com/titu1994/Keras-Group-Normalization/master/group_norm.py'
-    urllib.request.urlretrieve(url, "group_norm.py")
-    from group_norm import GroupNormalization
+import tensorflow.keras as keras
+import tensorflow as tf
+from tensorflow.keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
+from tensorflow.keras.layers import Input, Reshape, Flatten, SpatialDropout3D
+from tensorflow.keras.optimizers import Adam as adam
+from tensorflow.keras.models import Model
+from tensorflow_addons.layers import GroupNormalization
 
 
-def green_block(inp, filters, data_format='channels_first', name=None):
+def green_block(inp, filters, data_format='channels_last', name=None):
     """
     green_block(inp, filters, name=None)
     ------------------------------------
@@ -64,7 +55,7 @@ def green_block(inp, filters, data_format='channels_first', name=None):
     # No. of groups = 8, as given in the paper
     x = GroupNormalization(
         groups=8,
-        axis=1 if data_format == 'channels_first' else 0,
+        axis=1 if data_format == 'channels_first' else -1,
         name=f'GroupNorm_1_{name}' if name else None)(inp)
     x = Activation('relu', name=f'Relu_1_{name}' if name else None)(x)
     x = Conv3D(
@@ -77,7 +68,7 @@ def green_block(inp, filters, data_format='channels_first', name=None):
 
     x = GroupNormalization(
         groups=8,
-        axis=1 if data_format == 'channels_first' else 0,
+        axis=1 if data_format == 'channels_first' else -1,
         name=f'GroupNorm_2_{name}' if name else None)(x)
     x = Activation('relu', name=f'Relu_2_{name}' if name else None)(x)
     x = Conv3D(
@@ -101,17 +92,23 @@ def sampling(args):
         z (tensor): sampled latent vector
     """
     z_mean, z_var = args
-    batch = K.shape(z_mean)[0]
-    dim = K.int_shape(z_mean)[1]
+    batch = tf.shape(z_mean)[0]
+    # dim = K.int_shape(z_mean)[1]
+    dim = tf.shape(z_mean)[1]
     # by default, random_normal has mean = 0 and std = 1.0
-    epsilon = K.random_normal(shape=(batch, dim))
-    return z_mean + K.exp(0.5 * z_var) * epsilon
+    # epsilon = K.random_normal(shape=(batch, dim))
+    epsilon = tf.random.normal(shape=(batch, dim))
+    return z_mean + tf.exp(0.5 * z_var) * epsilon
 
 
 def dice_coefficient(y_true, y_pred):
-    intersection = K.sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
-    dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + 1e-8
-    return K.mean(2 * intersection / dn, axis=[0, 1])
+    # TODO make this an argument
+    data_format = 'channels_last'
+    axes = [-3, -2, -1] if data_format == 'channels_first' else [-4, -3, -2]
+
+    intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=axes)
+    dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=axes) + 1e-8
+    return tf.reduce_mean(2 * intersection / dn)
 
 
 def loss_gt(e=1e-8):
@@ -140,10 +137,14 @@ def loss_gt(e=1e-8):
     """
 
     def loss_gt_(y_true, y_pred):
-        intersection = K.sum(K.abs(y_true * y_pred), axis=[-3, -2, -1])
-        dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3, -2, -1]) + e
+        # TODO make this an argument
+        data_format = 'channels_last'
+        axes = [-3, -2, -1] if data_format == 'channels_first' else [-4, -3, -2]
 
-        return - K.mean(2 * intersection / dn, axis=[0, 1])
+        intersection = tf.reduce_sum(tf.abs(y_true * y_pred), axis=axes)
+        dn = tf.reduce_sum(tf.square(y_true) + tf.square(y_pred), axis=axes) + e
+
+        return - tf.reduce_mean(2 * intersection / dn)
 
     return loss_gt_
 
@@ -190,10 +191,10 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
         c, H, W, D = input_shape
         n = c * H * W * D
 
-        loss_L2 = K.mean(K.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
+        loss_L2 = tf.reduce_mean(tf.square(y_true - y_pred), axis=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
 
-        loss_KL = (1 / n) * K.sum(
-            K.exp(z_var) + K.square(z_mean) - 1. - z_var,
+        loss_KL = (1 / n) * tf.reduce_sum(
+            tf.exp(z_var) + tf.square(z_mean) - 1. - z_var,
             axis=-1
         )
 
@@ -204,13 +205,14 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
 
 @gin.configurable(name_or_fn='optim', allowlist=['weight_L2', 'weight_KL', 'adam_lr', 'adam_decay'])
 def build_model(
-        input_shape=(4, 160, 192, 128),
+        input_shape=(160, 192, 128, 4),
         output_channels=3,
         weight_L2=0.1,
         weight_KL=0.1,
         adam_lr=1e-4,
         adam_decay=.9,
         dice_e=1e-8,
+        data_format='channels_last',
 ):
     """
     build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1)
@@ -242,7 +244,10 @@ def build_model(
     `model`: A keras.models.Model instance
         The created model.
     """
-    c, H, W, D = input_shape
+    if data_format == 'channels_first':
+        c, H, W, D = input_shape
+    else:
+        H, W, D, c = input_shape
     assert len(input_shape) == 4, "Input shape must be a 4-tuple"
     # assert (c % 4) == 0, "The no. of channels must be divisible by 4"
     assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
@@ -261,49 +266,50 @@ def build_model(
         kernel_size=(3, 3, 3),
         strides=1,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Input_x1')(inp)
 
     ## Dropout (0.2)
-    x = SpatialDropout3D(0.2, data_format='channels_first')(x)
+    # this seems to run only with tensorflow 2.3 (not older or newer!)
+    x = SpatialDropout3D(0.2, data_format=data_format)(x)
 
     ## Green Block x1 (output filters = 32)
-    x1 = green_block(x, 32, name='x1')
+    x1 = green_block(x, 32, name='x1', data_format=data_format)
     x = Conv3D(
         filters=32,
         kernel_size=(3, 3, 3),
         strides=2,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Enc_DownSample_32')(x1)
 
     ## Green Block x2 (output filters = 64)
-    x = green_block(x, 64, name='Enc_64_1')
-    x2 = green_block(x, 64, name='x2')
+    x = green_block(x, 64, name='Enc_64_1', data_format=data_format)
+    x2 = green_block(x, 64, name='x2', data_format=data_format)
     x = Conv3D(
         filters=64,
         kernel_size=(3, 3, 3),
         strides=2,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Enc_DownSample_64')(x2)
 
     ## Green Blocks x2 (output filters = 128)
-    x = green_block(x, 128, name='Enc_128_1')
-    x3 = green_block(x, 128, name='x3')
+    x = green_block(x, 128, name='Enc_128_1', data_format=data_format)
+    x3 = green_block(x, 128, name='x3', data_format=data_format)
     x = Conv3D(
         filters=128,
         kernel_size=(3, 3, 3),
         strides=2,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Enc_DownSample_128')(x3)
 
     ## Green Blocks x4 (output filters = 256)
-    x = green_block(x, 256, name='Enc_256_1')
-    x = green_block(x, 256, name='Enc_256_2')
-    x = green_block(x, 256, name='Enc_256_3')
-    x4 = green_block(x, 256, name='x4')
+    x = green_block(x, 256, name='Enc_256_1', data_format=data_format)
+    x = green_block(x, 256, name='Enc_256_2', data_format=data_format)
+    x = green_block(x, 256, name='Enc_256_3', data_format=data_format)
+    x4 = green_block(x, 256, name='x4', data_format=data_format)
 
     # -------------------------------------------------------------------------
     # Decoder
@@ -317,42 +323,42 @@ def build_model(
         filters=128,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_ReduceDepth_128')(x4)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_UpSample_128')(x)
     x = Add(name='Input_Dec_GT_128')([x, x3])
-    x = green_block(x, 128, name='Dec_GT_128')
+    x = green_block(x, 128, name='Dec_GT_128', data_format=data_format)
 
     ### Green Block x1 (output filters=64)
     x = Conv3D(
         filters=64,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_ReduceDepth_64')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_UpSample_64')(x)
     x = Add(name='Input_Dec_GT_64')([x, x2])
-    x = green_block(x, 64, name='Dec_GT_64')
+    x = green_block(x, 64, name='Dec_GT_64', data_format=data_format)
 
     ### Green Block x1 (output filters=32)
     x = Conv3D(
         filters=32,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_ReduceDepth_32')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_GT_UpSample_32')(x)
     x = Add(name='Input_Dec_GT_32')([x, x1])
-    x = green_block(x, 32, name='Dec_GT_32')
+    x = green_block(x, 32, name='Dec_GT_32', data_format=data_format)
 
     ### Blue Block x1 (output filters=32)
     x = Conv3D(
@@ -360,7 +366,7 @@ def build_model(
         kernel_size=(3, 3, 3),
         strides=1,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Input_Dec_GT_Output')(x)
 
     ### Output Block
@@ -368,7 +374,7 @@ def build_model(
         filters=output_channels,  # No. of tumor classes is 3
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         activation='sigmoid',
         name='Dec_GT_Output')(x)
 
@@ -376,14 +382,14 @@ def build_model(
     # -------------------------------------------------------------------------
 
     ### VD Block (Reducing dimensionality of the data)
-    x = GroupNormalization(groups=8, axis=1, name='Dec_VAE_VD_GN')(x4)
+    x = GroupNormalization(groups=8, name='Dec_VAE_VD_GN', axis=1 if data_format == 'channels_first' else -1)(x4)
     x = Activation('relu', name='Dec_VAE_VD_relu')(x)
     x = Conv3D(
         filters=16,
         kernel_size=(3, 3, 3),
         strides=2,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_VD_Conv3D')(x)
 
     # Not mentioned in the paper, but the author used a Flattening layer here.
@@ -402,16 +408,19 @@ def build_model(
     ### VU Block (Upsizing back to a depth of 256)
     x = Dense((H // 16) * (W // 16) * (D // 16))(x)
     x = Activation('relu')(x)
-    x = Reshape((1, (H // 16), (W // 16), (D // 16)))(x)
+    if data_format == 'channels_first':
+        x = Reshape((1, (H // 16), (W // 16), (D // 16)))(x)
+    else:
+        x = Reshape(((H // 16), (W // 16), (D // 16), 1))(x)
     x = Conv3D(
         filters=256,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_ReduceDepth_256')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_UpSample_256')(x)
 
     ### Green Block x1 (output filters=128)
@@ -419,39 +428,39 @@ def build_model(
         filters=128,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_ReduceDepth_128')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_UpSample_128')(x)
-    x = green_block(x, 128, name='Dec_VAE_128')
+    x = green_block(x, 128, name='Dec_VAE_128', data_format=data_format)
 
     ### Green Block x1 (output filters=64)
     x = Conv3D(
         filters=64,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_ReduceDepth_64')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_UpSample_64')(x)
-    x = green_block(x, 64, name='Dec_VAE_64')
+    x = green_block(x, 64, name='Dec_VAE_64', data_format=data_format)
 
     ### Green Block x1 (output filters=32)
     x = Conv3D(
         filters=32,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_ReduceDepth_32')(x)
     x = UpSampling3D(
         size=2,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_UpSample_32')(x)
-    x = green_block(x, 32, name='Dec_VAE_32')
+    x = green_block(x, 32, name='Dec_VAE_32', data_format=data_format)
 
     ### Blue Block x1 (output filters=32)
     x = Conv3D(
@@ -459,7 +468,7 @@ def build_model(
         kernel_size=(3, 3, 3),
         strides=1,
         padding='same',
-        data_format='channels_first',
+        data_format=data_format,
         name='Input_Dec_VAE_Output')(x)
 
     ### Output Block
@@ -467,7 +476,7 @@ def build_model(
         filters=c,
         kernel_size=(1, 1, 1),
         strides=1,
-        data_format='channels_first',
+        data_format=data_format,
         name='Dec_VAE_Output')(x)
 
     # Build and Compile the model
@@ -476,7 +485,8 @@ def build_model(
     model.compile(
         adam(lr=adam_lr, decay=adam_decay),
         [loss_gt(dice_e), loss_VAE(input_shape, z_mean, z_var, weight_L2=weight_L2, weight_KL=weight_KL)],
-        metrics=[dice_coefficient]
+        metrics=[dice_coefficient],
+        experimental_run_tf_function=False,
     )
 
     return model

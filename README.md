@@ -7,9 +7,11 @@
 <center><b>The Model Architecture</b></center><br /><center>Source: https://arxiv.org/pdf/1810.11654.pdf</center>
 <br /><br />
 
-Keras implementation of the paper <b>3D MRI brain tumor segmentation using autoencoder regularization</b> by Myronenko A. (https://arxiv.org/abs/1810.11654). The author (team name: <b>NVDLMED</b>) ranked #1 on the <a href="https://www.med.upenn.edu/sbia/brats2018/" target="_blank">BraTS 2018</a> leaderboard using the model described in the paper.
+Tensorflow 2 implementation of the paper <b>3D MRI brain tumor segmentation using autoencoder regularization</b> by Myronenko A. (https://arxiv.org/abs/1810.11654). The author (team name: <b>NVDLMED</b>) ranked #1 on the <a href="https://www.med.upenn.edu/sbia/brats2018/" target="_blank">BraTS 2018</a> leaderboard using the model described in the paper.
 
 This repository contains the model complete with the loss function, all implemented end-to-end in Keras. The usage is described in the next section.
+
+Use `tensorflow==2.3` !
 
 # Usage
 1. Download the file [`model.py`](model.py) and keep in the same folder as your project notebook/script.
