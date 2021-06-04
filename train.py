@@ -21,6 +21,7 @@ def read_img(img_path):
     Reads a .nii.gz image and returns as a numpy array.
     Added: transpose it to match the paper implementation dimension order.
     """
+    img_path = str(img_path)
     return sitk.GetArrayFromImage(sitk.ReadImage(img_path)).T
 
 
@@ -39,10 +40,31 @@ def resize(img, shape, mode='constant'):
     return zoom(img, factors, mode=mode)
 
 
-def preprocess(img, out_shape=None, augment=True):
-    # normalize the image (based on non-zero voxels)
-    mean = img[img != 0].mean()
-    std = img[img != 0].std()
+def preprocess(
+        img_path,
+        resized_path=None,
+        out_shape=None,
+        augment=True,
+):
+    if resized_path is None or not resized_path.exists():
+        img = read_img(img_path)
+        # normalize the image (based on non-zero voxels)
+        mean = img[img != 0].mean()
+        std = img[img != 0].std()
+
+        if out_shape is not None:
+            img = resize(img, out_shape, mode='constant')
+            if resized_path is not None:
+                resized_path.parent.mkdir(exist_ok=True)
+                np.savez(
+                    resized_path,
+                    img=img,
+                    mean=mean,
+                    std=std,
+                )
+    else:
+        npz = np.load(resized_path)
+        img, mean, std = npz['img'], npz['mean'], npz['std']
 
     if augment:
         # random intensity and scale shifts
@@ -56,28 +78,41 @@ def preprocess(img, out_shape=None, augment=True):
 
     img = (img - mean) / std
 
-    if out_shape is not None:
-        img = resize(img, out_shape, mode='constant')
-
     return img
 
 
-def preprocess_label(img, out_shape=None, mode='nearest'):
+def preprocess_label(
+        img_path,
+        resized_path=None,
+        out_shape=None,
+        mode='nearest',
+):
     """
     Separates out the 3 labels from the segmentation provided, namely:
     GD-enhancing tumor (ET — label 4), the peritumoral edema (ED — label 2))
     and the necrotic and non-enhancing tumor core (NCR/NET — label 1)
     """
-    ncr = img == 1  # Necrotic and Non-Enhancing Tumor (NCR/NET)
-    ed = img == 2  # Peritumoral Edema (ED)
-    et = img == 4  # GD-enhancing Tumor (ET)
+    if resized_path is None or not resized_path.exists():
+        img = read_img(img_path)
 
-    if out_shape is not None:
-        ncr = resize(ncr, out_shape, mode=mode)
-        ed = resize(ed, out_shape, mode=mode)
-        et = resize(et, out_shape, mode=mode)
+        ncr = img == 1  # Necrotic and Non-Enhancing Tumor (NCR/NET)
+        ed = img == 2  # Peritumoral Edema (ED)
+        et = img == 4  # GD-enhancing Tumor (ET)
 
-    return np.array([ncr, ed, et], dtype=np.float32)
+        if out_shape is not None:
+            ncr = resize(ncr, out_shape, mode=mode)
+            ed = resize(ed, out_shape, mode=mode)
+            et = resize(et, out_shape, mode=mode)
+
+        img = np.array([ncr, ed, et], dtype=np.float32)[None, ...]
+
+        if resized_path is not None:
+            resized_path.parent.mkdir(exist_ok=True)
+            np.savez(resized_path, img=img)
+    else:
+        img = np.load(resized_path)['img']
+
+    return img
 
 
 def save_preds(
@@ -117,10 +152,9 @@ def get_paths(path_root):
     pat = re.compile('.*_(\w*)\.nii\.gz')
 
     return [{
-        pat.findall(item)[0]: item
+        pat.findall(item)[0]: Path(item)
         for item in items
-    }
-        for items in list(zip(t1, t2, t1ce, flair, seg))]
+    } for items in list(zip(t1, t2, t1ce, flair, seg))]
 
 
 @gin.configurable(denylist=['data_paths'])
@@ -130,6 +164,7 @@ def data_gen(
         input_shape,
         modalities,
         data_format,
+        save_resized=True,
 ):
     xs, ys = [], []
     out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
@@ -146,11 +181,23 @@ def data_gen(
         shuffled_paths = random.sample(data_paths, len(data_paths))
         for imgs in shuffled_paths:
             try:
-                x = np.array(
-                    [preprocess(read_img(imgs[m]), out_shape) for m in modalities],
+                resized_dir = imgs['seg'].parent / f'resized_{"_".join(str(s) for s in out_shape)}'
+                x = np.array([
+                    preprocess(
+                        img_path=imgs[m],
+                        out_shape=out_shape,
+                        resized_path=(resized_dir / imgs[m].name).with_suffix('').with_suffix(
+                            '.npz') if save_resized else None,
+                    ) for m in modalities],
                     dtype=np.float32,
                 )
-                y = preprocess_label(read_img(imgs['seg']), out_shape)[None, ...]
+                y = preprocess_label(
+                    img_path=imgs['seg'],
+                    out_shape=out_shape,
+                    resized_path=(resized_dir / imgs['seg'].name).with_suffix('').with_suffix(
+                        '.npz') if save_resized else None,
+                )
+
             except Exception as e:
                 print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
                 continue
