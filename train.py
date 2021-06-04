@@ -164,6 +164,7 @@ def data_gen(
         input_shape,
         modalities,
         data_format,
+        augment=True,
         save_resized=True,
 ):
     xs, ys = [], []
@@ -188,6 +189,7 @@ def data_gen(
                         out_shape=out_shape,
                         resized_path=(resized_dir / imgs[m].name).with_suffix('').with_suffix(
                             '.npz') if save_resized else None,
+                        augment=augment,
                     ) for m in modalities],
                     dtype=np.float32,
                 )
@@ -255,13 +257,12 @@ def train(
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
     model = build_model(input_shape=input_shape, output_channels=3, data_format=data_format)
-    # model.summary()
 
     model.fit(
         data_gen(data_paths_train),
         epochs=epochs,
         steps_per_epoch=len(data_paths_train) // batch_size,
-        validation_data=data_gen(data_paths_val),
+        validation_data=data_gen(data_paths_val, augment=False),
         validation_steps=len(data_paths_val) // batch_size,
         callbacks=[
             k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
