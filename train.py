@@ -207,10 +207,10 @@ def data_gen(
                 ).squeeze()
                 # we have to do axis flipping here to be consistent with all modalities
                 if augment:
-                    for ax_id in range(x.shape[0]):
+                    for ax_id in range(len(x.shape) - 1):
                         if random.getrandbits(1):
-                            x = np.flip(x, axis=ax_id)
-                            y = np.flip(y, axis=ax_id)
+                            x = np.flip(x, axis=ax_id + 1)
+                            y = np.flip(y, axis=ax_id + 1)
 
             except Exception as e:
                 print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
