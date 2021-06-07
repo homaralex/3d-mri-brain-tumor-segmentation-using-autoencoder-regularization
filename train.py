@@ -40,11 +40,13 @@ def resize(img, shape, mode='constant'):
     return zoom(img, factors, mode=mode)
 
 
+@gin.configurable(allowlist=['z_score'])
 def preprocess(
         img_path,
         resized_path=None,
         out_shape=None,
         augment=True,
+        z_score=False,
 ):
     if resized_path is None or not resized_path.exists():
         img = read_img(img_path)
@@ -77,6 +79,8 @@ def preprocess(
                 img = np.flip(img, axis=ax_idx)
 
     img = (img - mean) / std
+    if z_score:
+        img = (img - img.min()) / (img.max() - img.min())
 
     return img
 
@@ -125,6 +129,7 @@ def save_preds(
 
     ret = model.predict(data)
 
+    # take the middle slice
     slice_idx = ret[1].shape[1] // 2
     if data_format == 'channels_first':
         plt.imshow(ret[0][0][0][slice_idx], cmap='Greys_r')
@@ -231,6 +236,7 @@ def train(
         model_name='ResNet3DVAE_Brats',
         input_shape=(160, 192, 128),
         data_format='channels_last',
+        z_score=False,
         modalities=('t1', 't2', 't1ce', 'flair'),
         batch_size=1,
         epochs=300,
@@ -244,6 +250,7 @@ def train(
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.modalities', modalities)
     gin.bind_parameter('data_gen.data_format', data_format)
+    gin.bind_parameter('preprocess.z_score', z_score)
 
     data_paths_train = get_paths(brats_train_dir)
     if brats_val_dir is None:
@@ -262,7 +269,12 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = build_model(input_shape=input_shape, output_channels=3, data_format=data_format)
+    model = build_model(
+        input_shape=input_shape,
+        output_channels=3,
+        data_format=data_format,
+        z_score=z_score,
+    )
 
     model.fit(
         data_gen(data_paths_train),

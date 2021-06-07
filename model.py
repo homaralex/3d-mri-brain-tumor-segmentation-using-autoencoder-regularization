@@ -152,6 +152,8 @@ def build_model(
         adam_lr=1e-4,
         adam_decay=.9,
         dice_e=1e-8,
+        # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
+        z_score=False,
         data_format='channels_last',
         shared_latent_space=False,
 ):
@@ -438,6 +440,7 @@ def build_model(
         filters=c,
         kernel_size=(1, 1, 1),
         strides=1,
+        activation='sigmoid' if z_score else None,
         data_format=data_format,
         name='Dec_VAE_Output')(x)
 
@@ -524,7 +527,7 @@ def build_model(
         optimizer=adam(lr=adam_lr, decay=adam_decay),
         loss=[
             loss_gt(dice_e, data_format=data_format),
-            lambda y_true, y_pred: tf.reduce_mean(tf.square(inp - out_VAE)),
+            lambda y_true, y_pred: tf.reduce_mean(tf.square(y_true - y_pred)),
             lambda y_true, y_pred: tf.reduce_mean(-.5 * (1 + z_var - tf.square(z_mean) - tf.exp(z_var))),
         ],
         loss_weights=[
