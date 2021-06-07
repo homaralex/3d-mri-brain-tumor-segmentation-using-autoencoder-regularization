@@ -514,6 +514,7 @@ def build_model(
             filters=output_channels,
             kernel_size=(1, 1, 1),
             strides=1,
+            activation='sigmoid',
             data_format=data_format,
             name='Dec_GT_Output')(x)
 
