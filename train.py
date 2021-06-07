@@ -121,24 +121,27 @@ def save_preds(
         model_dir,
         data_format,
 ):
-    data, _ = next(data_gen(data, 1))
+    data, y = next(data_gen(data, 1))
 
     ret = model.predict(data)
 
+    slice_idx = ret[1].shape[1] // 2
     if data_format == 'channels_first':
-        plt.imshow(ret[0][0][0][20], cmap='Greys_r')
+        plt.imshow(ret[0][0][0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'segmentation.png')
-        plt.imshow(ret[1][0][0][20], cmap='Greys_r')
+        plt.imshow(ret[1][0][0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'reconstruction.png')
-        plt.imshow(data[0][0][20], cmap='Greys_r')
+        plt.imshow(data[0][0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'original.png')
     else:
-        plt.imshow(ret[0][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.imshow(ret[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'segmentation.png')
-        plt.imshow(ret[1][0][:, :, :, 0][20], cmap='Greys_r')
+        plt.imshow(ret[1][0][:, :, :, 0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'reconstruction.png')
-        plt.imshow(data[0][:, :, :, 0][20], cmap='Greys_r')
+        plt.imshow(data[0][:, :, :, 0][slice_idx], cmap='Greys_r')
         plt.savefig(model_dir / 'original.png')
+        plt.imshow(y[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'original_seg.png')
 
 
 def get_paths(path_root):
