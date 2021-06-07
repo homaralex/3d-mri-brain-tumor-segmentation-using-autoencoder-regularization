@@ -73,11 +73,6 @@ def preprocess(
         mean += std * np.random.uniform(-.1, .1)
         std *= np.random.uniform(.9, 1.1)
 
-        # random axis flipping
-        for ax_idx in range(3):
-            if random.getrandbits(1):
-                img = np.flip(img, axis=ax_idx)
-
     img = (img - mean) / std
     if z_score:
         img = (img - img.min()) / (img.max() - img.min())
@@ -125,7 +120,7 @@ def save_preds(
         model_dir,
         data_format,
 ):
-    data, y = next(data_gen(data, 1))
+    data, y = next(data_gen(data, 1, augment=False))
 
     ret = model.predict(data)
 
@@ -179,7 +174,7 @@ def data_gen(
     out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
     def yield_batch(xs, ys):
-        xs, ys = np.array(xs), [np.concatenate([y[0] for y in ys]), np.array([y[1] for y in ys])]
+        xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
 
         if data_format == 'channels_last':
             xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
@@ -209,7 +204,13 @@ def data_gen(
                     out_shape=out_shape,
                     resized_path=(resized_dir / imgs['seg'].name).with_suffix('').with_suffix(
                         '.npz') if save_resized else None,
-                )
+                ).squeeze()
+                # we have to do axis flipping here to be consistent with all modalities
+                if augment:
+                    for ax_id in range(x.shape[0]):
+                        if random.getrandbits(1):
+                            x = np.flip(x, axis=ax_id)
+                            y = np.flip(y, axis=ax_id)
 
             except Exception as e:
                 print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
