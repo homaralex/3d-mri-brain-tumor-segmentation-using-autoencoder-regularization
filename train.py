@@ -176,6 +176,9 @@ def data_gen(
         if data_format == 'channels_last':
             xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
 
+        # fake output for the kld loss
+        ys.append(np.array([None]))
+
         return xs, ys
 
     while True:
