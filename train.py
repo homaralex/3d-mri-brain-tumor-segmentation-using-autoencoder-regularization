@@ -185,7 +185,7 @@ def data_gen(
             xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
 
         # fake output for the kld loss
-        ys.append(np.array([None]))
+        ys.append(np.zeros((ys[0].shape[0], 1)))
 
         return xs, ys
 
