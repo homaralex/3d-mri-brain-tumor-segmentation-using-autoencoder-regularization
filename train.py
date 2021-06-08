@@ -7,6 +7,8 @@ from pathlib import Path
 
 import gin
 import cv2
+import wandb
+from wandb.keras import WandbCallback
 import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
@@ -120,36 +122,6 @@ def preprocess_label(
     return img
 
 
-def save_preds(
-        model,
-        data,
-        model_dir,
-        data_format,
-):
-    data, y = next(data_gen(data, 1, augment=False))
-
-    ret = model.predict(data)
-
-    # take the middle slice
-    slice_idx = ret[1].shape[1] // 2
-    if data_format == 'channels_first':
-        plt.imshow(ret[0][0][0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'segmentation.png')
-        plt.imshow(ret[1][0][0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'reconstruction.png')
-        plt.imshow(data[0][0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'original.png')
-    else:
-        plt.imshow(ret[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'segmentation.png')
-        plt.imshow(ret[1][0][:, :, :, 0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'reconstruction.png')
-        plt.imshow(data[0][:, :, :, 0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'original.png')
-        plt.imshow(y[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
-        plt.savefig(model_dir / 'original_seg.png')
-
-
 def get_paths(path_root):
     # Get a list of files for all modalities individually
     t1 = glob.glob(path_root + '*GG/*/*t1.nii.gz')
@@ -235,6 +207,74 @@ def data_gen(
             yield yield_batch(xs, ys)
 
 
+def save_preds(
+        model,
+        data,
+        model_dir,
+        data_format,
+):
+    data, y = next(data_gen(data, 1, augment=False))
+
+    ret = model.predict(data)
+
+    # take the middle slice
+    slice_idx = ret[1].shape[1] // 2
+    if data_format == 'channels_first':
+        plt.imshow(ret[0][0][0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
+    else:
+        plt.imshow(ret[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'segmentation.png')
+        plt.imshow(ret[1][0][:, :, :, 0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'reconstruction.png')
+        plt.imshow(data[0][:, :, :, 0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'original.png')
+        plt.imshow(y[0][0][:, :, :, 0][slice_idx], cmap='Greys_r')
+        plt.savefig(model_dir / 'original_seg.png')
+
+
+def wandb_callback(
+        model,
+        data_gen,
+        data_format,
+):
+    segs, recs = [], []
+    for idx in range(4):
+        x, y = next(data_gen)
+        preds = model.predict(x)
+
+        # take the middle slice
+        slice_idx = preds[1].shape[1] // 2
+        if data_format == 'channels_first':
+            seg = preds[0][0][0][slice_idx]
+            rec = preds[1][0][0][slice_idx]
+            orig = x[0][0][slice_idx]
+            seg_orig = y[0][0][0][slice_idx]
+        else:
+            seg = preds[0][0][:, :, :, 0][slice_idx]
+            rec = preds[1][0][:, :, :, 0][slice_idx]
+            orig = x[0][:, :, :, 0][slice_idx]
+            seg_orig = y[0][0][:, :, :, 0][slice_idx]
+
+        recs.append(wandb.Image(rec))
+        mask_img = wandb.Image(orig, masks={
+            "predictions": {
+                "mask_data": seg,
+            },
+            "ground_truth": {
+                "mask_data": seg_orig,
+            },
+        })
+        segs.append(mask_img)
+
+    wandb.log({"reconstructions": recs})
+    wandb.log({"segmentations": segs})
+
+
 @gin.configurable
 def train(
         brats_train_dir=gin.REQUIRED,
@@ -247,6 +287,7 @@ def train(
         modalities=('t1', 't2', 't1ce', 'flair'),
         batch_size=1,
         epochs=300,
+        wandb_project=None,
         # for debugging purposes
         max_samples=None,
 ):
@@ -283,32 +324,54 @@ def train(
         z_score=z_score,
     )
 
+    callbacks = [
+        k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
+        k_callbacks.ModelCheckpoint(
+            filepath=str(model_dir / 'model.hdf5'),
+            verbose=1,
+        ),
+        k_callbacks.ModelCheckpoint(
+            filepath=str(model_dir / 'model_best.hdf5'),
+            verbose=1,
+            save_best_only=True,
+        ),
+        k_callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: save_preds(
+                model=model,
+                data=data_paths_val,
+                model_dir=model_dir,
+                data_format=data_format,
+            ),
+        ),
+    ]
+
+    if wandb_project is not None:
+        wandb_config = {}
+        for line in gin.config.config_str().split('\n'):
+            if len(line.strip()) > 0 and line[0] != '#':
+                split_idx = line.find('=')
+                key, val = line[:split_idx].strip(), line[split_idx + 1:].strip()
+                wandb_config[key] = val
+        wandb.init(project=wandb_project, config=wandb_config)
+        # replace last callback with wandb
+        callbacks[-1] = WandbCallback(save_model=False)
+        callbacks.append(
+            k_callbacks.LambdaCallback(
+                on_epoch_end=lambda epoch, logs: wandb_callback(
+                    model=model,
+                    data_gen=data_gen(data_paths_val, augment=False),
+                    data_format=data_format,
+                ),
+            )
+        )
+
     model.fit(
         data_gen(data_paths_train),
         epochs=epochs,
         steps_per_epoch=len(data_paths_train) // batch_size,
         validation_data=data_gen(data_paths_val, augment=False),
         validation_steps=len(data_paths_val) // batch_size,
-        callbacks=[
-            k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
-            k_callbacks.ModelCheckpoint(
-                filepath=str(model_dir / 'model.hdf5'),
-                verbose=1,
-            ),
-            k_callbacks.ModelCheckpoint(
-                filepath=str(model_dir / 'model_best.hdf5'),
-                verbose=1,
-                save_best_only=True,
-            ),
-            k_callbacks.LambdaCallback(
-                on_epoch_end=lambda epoch, logs: save_preds(
-                    model=model,
-                    data=data_paths_val,
-                    model_dir=model_dir,
-                    data_format=data_format,
-                ),
-            )
-        ],
+        callbacks=callbacks,
     )
 
 
