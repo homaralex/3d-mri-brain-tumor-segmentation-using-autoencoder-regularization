@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import gin
+import cv2
 import matplotlib.pyplot as plt
 import SimpleITK as sitk  # For loading the dataset
 import numpy as np  # For data manipulation
@@ -99,9 +100,14 @@ def preprocess_label(
         et = img == 4  # GD-enhancing Tumor (ET)
 
         if out_shape is not None:
-            ncr = resize(ncr, out_shape, mode=mode)
-            ed = resize(ed, out_shape, mode=mode)
-            et = resize(et, out_shape, mode=mode)
+            ncr = resize(ncr, out_shape, mode=mode).astype('uint8')
+            ed = resize(ed, out_shape, mode=mode).astype('uint8')
+            et = resize(et, out_shape, mode=mode).astype('uint8')
+
+            kernel = np.ones((3, 3))
+            ncr = np.array([cv2.morphologyEx(a, cv2.MORPH_CLOSE, kernel, iterations=2) for a in ncr])
+            ed = np.array([cv2.morphologyEx(a, cv2.MORPH_CLOSE, kernel, iterations=2) for a in ed])
+            et = np.array([cv2.morphologyEx(a, cv2.MORPH_CLOSE, kernel, iterations=2) for a in et])
 
         img = np.array([ncr, ed, et], dtype=np.float32)[None, ...]
 
