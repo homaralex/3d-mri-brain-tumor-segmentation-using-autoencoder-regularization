@@ -522,6 +522,13 @@ def build_model(
             data_format=data_format,
             name='Dec_GT_Output')(x)
 
+    def num_active_dims(y_true, y_pred):
+        threshold = 1e-3
+        variances = tf.math.reduce_variance(z_mean, axis=0)
+        _num_active_dims = tf.math.count_nonzero(variances > threshold)
+
+        return _num_active_dims
+
     # Build and Compile the model
     model = Model(inp, outputs=[out_GT, out_VAE, z_mean_z_var])
     model.compile(
@@ -536,6 +543,9 @@ def build_model(
             weight_L2,
             weight_KL,
         ],
+        metrics={
+            z_mean_z_var.name.split('/')[0]: num_active_dims,
+        },
         experimental_run_tf_function=False,
     )
 
