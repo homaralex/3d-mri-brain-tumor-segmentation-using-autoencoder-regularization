@@ -137,16 +137,17 @@ def loss_gt(e=1e-8, data_format='channels_last'):
     return loss_gt_
 
 
-@gin.configurable(name_or_fn='model', allowlist=[
-    'weight_L2',
-    'weight_KL',
-    'adam_lr',
-    'adam_decay',
-    'shared_latent_space',
+@gin.configurable(name_or_fn='model', denylist=[
+    'input_shape',
+    'output_channels',
+    'z_score',
+    'data_format',
+    'dice_e',
 ])
 def build_model(
         input_shape=(160, 192, 128, 4),
         output_channels=3,
+        weight_dice=1,
         weight_L2=0.1,
         weight_KL=0.1,
         adam_lr=1e-4,
@@ -531,7 +532,7 @@ def build_model(
             lambda y_true, y_pred: tf.reduce_mean(-.5 * (1 + z_var - tf.square(z_mean) - tf.exp(z_var))),
         ],
         loss_weights=[
-            1.,
+            weight_dice,
             weight_L2,
             weight_KL,
         ],
