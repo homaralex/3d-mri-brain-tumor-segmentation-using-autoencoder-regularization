@@ -361,12 +361,7 @@ def build_model(
         x = Dense(256, name='Dec_VAE_VD_Dense')(x)
 
     ### VDraw Block (Sampling)
-    # reshaping is needed for Cropping1D
-    x = Reshape((256, 1), name='Dec_VAE_VD_Dense_Reshape')(x)
-    z_mean = Cropping1D((0, 128))(x)
-    z_mean = Flatten(name='Dec_VAE_VDraw_Mean')(z_mean)
-    z_var = Cropping1D((128, 0))(x)
-    z_var = Flatten(name='Dec_VAE_VDraw_Var')(z_var)
+    z_mean, z_var = x[:, :128], x[:, 128:]
     x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
     z_mean_z_var = x
 
