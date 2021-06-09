@@ -92,14 +92,13 @@ def sampling(args):
     # Returns
         z (tensor): sampled latent vector
     """
-    z_mean, z_var = args
+    z_mean, z_log_var = args
     batch = tf.shape(z_mean)[0]
-    # dim = K.int_shape(z_mean)[1]
     dim = tf.shape(z_mean)[1]
     # by default, random_normal has mean = 0 and std = 1.0
-    # epsilon = K.random_normal(shape=(batch, dim))
     epsilon = tf.random.normal(shape=(batch, dim))
-    return z_mean + tf.exp(0.5 * z_var) * epsilon
+
+    return z_mean + tf.exp(0.5 * z_log_var) * epsilon
 
 
 def loss_gt(e=1e-8, data_format='channels_last'):
@@ -361,9 +360,9 @@ def build_model(
         x = Dense(256, name='Dec_VAE_VD_Dense')(x)
 
     ### VDraw Block (Sampling)
-    z_mean, z_var = x[:, :128], x[:, 128:]
-    x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
-    z_mean_z_var = x
+    z_mean, z_log_var = x[:, :128], x[:, 128:]
+    x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_log_var])
+    z_mean_z_log_var = x
 
     ### VU Block (Upsizing back to a depth of 256)
     x = Dense((H // 16) * (W // 16) * (D // 16))(x)
@@ -519,18 +518,18 @@ def build_model(
 
     def num_active_dims(y_true, y_pred):
         threshold = .1
-        _num_active_dims = tf.math.count_nonzero(tf.exp(z_var) < threshold)
+        _num_active_dims = tf.math.count_nonzero(tf.exp(z_log_var) < threshold)
 
         return _num_active_dims
 
     # Build and Compile the model
-    model = Model(inp, outputs=[out_GT, out_VAE, z_mean_z_var])
+    model = Model(inp, outputs=[out_GT, out_VAE, z_mean_z_log_var])
     model.compile(
         optimizer=adam(lr=adam_lr, decay=adam_decay),
         loss=[
             loss_gt(dice_e, data_format=data_format),
             lambda y_true, y_pred: tf.reduce_mean(tf.square(y_true - y_pred)),
-            lambda y_true, y_pred: tf.reduce_mean(-.5 * (1 + z_var - tf.square(z_mean) - tf.exp(z_var))),
+            lambda y_true, y_pred: tf.reduce_mean(-.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))),
         ],
         loss_weights=[
             weight_dice,
@@ -538,7 +537,7 @@ def build_model(
             weight_KL,
         ],
         metrics={
-            z_mean_z_var.name.split('/')[0]: num_active_dims,
+            z_mean_z_log_var.name.split('/')[0]: num_active_dims,
         },
         experimental_run_tf_function=False,
     )
