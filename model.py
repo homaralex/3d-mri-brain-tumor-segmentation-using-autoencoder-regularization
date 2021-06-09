@@ -523,9 +523,8 @@ def build_model(
             name='Dec_GT_Output')(x)
 
     def num_active_dims(y_true, y_pred):
-        threshold = 1e-3
-        variances = tf.math.reduce_variance(z_mean, axis=0)
-        _num_active_dims = tf.math.count_nonzero(variances > threshold)
+        threshold = .1
+        _num_active_dims = tf.math.count_nonzero(tf.exp(z_var) < threshold)
 
         return _num_active_dims
 
