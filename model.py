@@ -6,14 +6,21 @@ import gin
 import tensorflow.keras as keras
 import tensorflow as tf
 from tensorflow.keras.layers import Concatenate
-from tensorflow.keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense, Cropping1D
+from tensorflow.keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense
 from tensorflow.keras.layers import Input, Reshape, Flatten, SpatialDropout3D
 from tensorflow.keras.optimizers import Adam as adam
 from tensorflow.keras.models import Model
 from tensorflow_addons.layers import GroupNormalization
 
 
-def green_block(inp, filters, data_format='channels_last', name=None):
+@gin.configurable(allowlist=['conv_3d_cls'])
+def green_block(
+        inp,
+        filters,
+        conv_3d_cls=gin.REQUIRED,
+        data_format='channels_last',
+        name=None,
+):
     """
     green_block(inp, filters, name=None)
     ------------------------------------
@@ -45,7 +52,7 @@ def green_block(inp, filters, data_format='channels_last', name=None):
         The output of the green block. Has no. of channels equal to `filters`.
         The size of the rest of the dimensions remains same as in `inp`.
     """
-    inp_res = Conv3D(
+    inp_res = conv_3d_cls(
         filters=filters,
         kernel_size=(1, 1, 1),
         strides=1,
@@ -59,7 +66,7 @@ def green_block(inp, filters, data_format='channels_last', name=None):
         axis=1 if data_format == 'channels_first' else -1,
         name=f'GroupNorm_1_{name}' if name else None)(inp)
     x = Activation('relu', name=f'Relu_1_{name}' if name else None)(x)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=filters,
         kernel_size=(3, 3, 3),
         strides=1,
@@ -72,7 +79,7 @@ def green_block(inp, filters, data_format='channels_last', name=None):
         axis=1 if data_format == 'channels_first' else -1,
         name=f'GroupNorm_2_{name}' if name else None)(x)
     x = Activation('relu', name=f'Relu_2_{name}' if name else None)(x)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=filters,
         kernel_size=(3, 3, 3),
         strides=1,
@@ -152,6 +159,7 @@ def build_model(
         adam_lr=1e-4,
         adam_decay=.9,
         dice_e=1e-8,
+        conv_weight_decay=None,
         # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
         z_score=False,
         data_format='channels_last',
@@ -196,6 +204,12 @@ def build_model(
     assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
         "All the input dimensions must be divisible by 16"
 
+    conv_3d_cls = Conv3D
+    if conv_weight_decay is not None:
+        conv_3d_cls = gin.external_configurable(Conv3D, 'Conv3D')
+        gin.bind_parameter('Conv3D.kernel_regularizer', keras.regularizers.L2(conv_weight_decay))
+    gin.bind_parameter('green_block.conv_3d_cls', conv_3d_cls)
+
     # -------------------------------------------------------------------------
     # Encoder
     # -------------------------------------------------------------------------
@@ -204,7 +218,7 @@ def build_model(
     inp = Input(input_shape)
 
     ## The Initial Block
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=32,
         kernel_size=(3, 3, 3),
         strides=1,
@@ -218,7 +232,7 @@ def build_model(
 
     ## Green Block x1 (output filters = 32)
     x1 = green_block(x, 32, name='x1', data_format=data_format)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=32,
         kernel_size=(3, 3, 3),
         strides=2,
@@ -229,7 +243,7 @@ def build_model(
     ## Green Block x2 (output filters = 64)
     x = green_block(x, 64, name='Enc_64_1', data_format=data_format)
     x2 = green_block(x, 64, name='x2', data_format=data_format)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=64,
         kernel_size=(3, 3, 3),
         strides=2,
@@ -240,7 +254,7 @@ def build_model(
     ## Green Blocks x2 (output filters = 128)
     x = green_block(x, 128, name='Enc_128_1', data_format=data_format)
     x3 = green_block(x, 128, name='x3', data_format=data_format)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=128,
         kernel_size=(3, 3, 3),
         strides=2,
@@ -263,7 +277,7 @@ def build_model(
 
     if not shared_latent_space:
         ### Green Block x1 (output filters=128)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=128,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -277,7 +291,7 @@ def build_model(
         x = green_block(x, 128, name='Dec_GT_128', data_format=data_format)
 
         ### Green Block x1 (output filters=64)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=64,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -291,7 +305,7 @@ def build_model(
         x = green_block(x, 64, name='Dec_GT_64', data_format=data_format)
 
         ### Green Block x1 (output filters=32)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=32,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -305,7 +319,7 @@ def build_model(
         x = green_block(x, 32, name='Dec_GT_32', data_format=data_format)
 
         ### Blue Block x1 (output filters=32)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=32,
             kernel_size=(3, 3, 3),
             strides=1,
@@ -328,7 +342,7 @@ def build_model(
     ### VD Block (Reducing dimensionality of the data)
     x = GroupNormalization(groups=8, name='Dec_VAE_VD_GN', axis=1 if data_format == 'channels_first' else -1)(x4)
     x = Activation('relu', name='Dec_VAE_VD_relu')(x)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=16,
         kernel_size=(3, 3, 3),
         strides=2,
@@ -371,7 +385,7 @@ def build_model(
         x = Reshape((1, (H // 16), (W // 16), (D // 16)))(x)
     else:
         x = Reshape(((H // 16), (W // 16), (D // 16), 1))(x)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=256,
         kernel_size=(1, 1, 1),
         strides=1,
@@ -383,7 +397,7 @@ def build_model(
         name='Dec_VAE_UpSample_256')(x)
 
     ### Green Block x1 (output filters=128)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=128,
         kernel_size=(1, 1, 1),
         strides=1,
@@ -396,7 +410,7 @@ def build_model(
     x = green_block(x, 128, name='Dec_VAE_128', data_format=data_format)
 
     ### Green Block x1 (output filters=64)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=64,
         kernel_size=(1, 1, 1),
         strides=1,
@@ -409,7 +423,7 @@ def build_model(
     x = green_block(x, 64, name='Dec_VAE_64', data_format=data_format)
 
     ### Green Block x1 (output filters=32)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=32,
         kernel_size=(1, 1, 1),
         strides=1,
@@ -422,7 +436,7 @@ def build_model(
     x = green_block(x, 32, name='Dec_VAE_32', data_format=data_format)
 
     ### Blue Block x1 (output filters=32)
-    x = Conv3D(
+    x = conv_3d_cls(
         filters=32,
         kernel_size=(3, 3, 3),
         strides=1,
@@ -448,7 +462,7 @@ def build_model(
             x = Reshape((1, (H // 16), (W // 16), (D // 16)))(x)
         else:
             x = Reshape(((H // 16), (W // 16), (D // 16), 1))(x)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=256,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -460,7 +474,7 @@ def build_model(
             name='Dec_GT_UpSample_256')(x)
 
         ### Green Block x1 (output filters=128)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=128,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -473,7 +487,7 @@ def build_model(
         x = green_block(x, 128, name='Dec_GT_128', data_format=data_format)
 
         ### Green Block x1 (output filters=64)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=64,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -486,7 +500,7 @@ def build_model(
         x = green_block(x, 64, name='Dec_GT_64', data_format=data_format)
 
         ### Green Block x1 (output filters=32)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=32,
             kernel_size=(1, 1, 1),
             strides=1,
@@ -499,7 +513,7 @@ def build_model(
         x = green_block(x, 32, name='Dec_GT_32', data_format=data_format)
 
         ### Blue Block x1 (output filters=32)
-        x = Conv3D(
+        x = conv_3d_cls(
             filters=32,
             kernel_size=(3, 3, 3),
             strides=1,
