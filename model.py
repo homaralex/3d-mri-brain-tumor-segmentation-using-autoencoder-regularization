@@ -161,6 +161,7 @@ def build_model(
         dice_e=1e-8,
         conv_weight_decay=None,
         dropout_rate=.2,
+        dim_latent_space=128,
         # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
         z_score=False,
         data_format='channels_last',
@@ -367,14 +368,14 @@ def build_model(
             x3_dense,
             x4_dense],
         )
-        x = Dense(256, name='Dec_VAE_VD_Dense')(x_dense_concat)
+        x = Dense(dim_latent_space * 2, name='Dec_VAE_VD_Dense')(x_dense_concat)
     else:
         # Not mentioned in the paper, but the author used a Flattening layer here.
         x = Flatten(name='Dec_VAE_VD_Flatten')(x)
-        x = Dense(256, name='Dec_VAE_VD_Dense')(x)
+        x = Dense(dim_latent_space * 2, name='Dec_VAE_VD_Dense')(x)
 
     ### VDraw Block (Sampling)
-    z_mean, z_log_var = x[:, :128], x[:, 128:]
+    z_mean, z_log_var = x[:, :dim_latent_space], x[:, dim_latent_space:]
     x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_log_var])
     z_mean_z_log_var = x
 
