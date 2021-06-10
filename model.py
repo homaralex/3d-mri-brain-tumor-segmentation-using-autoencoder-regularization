@@ -160,6 +160,7 @@ def build_model(
         adam_decay=.9,
         dice_e=1e-8,
         conv_weight_decay=None,
+        dropout_rate=.2,
         # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
         z_score=False,
         data_format='channels_last',
@@ -227,8 +228,7 @@ def build_model(
         name='Input_x1')(inp)
 
     ## Dropout (0.2)
-    # this seems to run only with tensorflow 2.3 (not older or newer!)
-    x = SpatialDropout3D(0.2, data_format=data_format)(x)
+    x = SpatialDropout3D(dropout_rate, data_format=data_format)(x)
 
     ## Green Block x1 (output filters = 32)
     x1 = green_block(x, 32, name='x1', data_format=data_format)
