@@ -207,7 +207,7 @@ def build_model(
     conv_3d_cls = Conv3D
     if conv_weight_decay is not None:
         conv_3d_cls = gin.external_configurable(Conv3D, 'Conv3D')
-        gin.bind_parameter('Conv3D.kernel_regularizer', keras.regularizers.L2(conv_weight_decay))
+        gin.bind_parameter('Conv3D.kernel_regularizer', keras.regularizers.L1L2(l2=conv_weight_decay))
     gin.bind_parameter('green_block.conv_3d_cls', conv_3d_cls)
 
     # -------------------------------------------------------------------------
