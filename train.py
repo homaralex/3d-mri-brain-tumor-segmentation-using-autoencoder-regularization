@@ -243,22 +243,29 @@ def wandb_callback(
         data_format,
 ):
     segs, recs = [], []
-    for idx in range(4):
+    while len(segs) < 4:
         x, y = next(data_gen)
-        preds = model.predict(x)
 
         # take the middle slice
-        slice_idx = preds[1].shape[1] // 2
+        slice_idx = x[0].shape[1] // 2
         if data_format == 'channels_first':
-            seg = preds[0][0][0][slice_idx]
+            seg_orig = y[0][0][0][slice_idx]
+            if seg_orig.sum() == 0:
+                continue
+
+            preds = model.predict(x)
             rec = preds[1][0][0][slice_idx]
             orig = x[0][0][slice_idx]
-            seg_orig = y[0][0][0][slice_idx]
+            seg = preds[0][0][0][slice_idx]
         else:
-            seg = preds[0][0][:, :, :, 0][slice_idx]
+            seg_orig = y[0][0][:, :, :, 0][slice_idx]
+            if seg_orig.sum() == 0:
+                continue
+
+            preds = model.predict(x)
             rec = preds[1][0][:, :, :, 0][slice_idx]
             orig = x[0][:, :, :, 0][slice_idx]
-            seg_orig = y[0][0][:, :, :, 0][slice_idx]
+            seg = preds[0][0][:, :, :, 0][slice_idx]
 
         recs.append(wandb.Image(rec))
         mask_img = wandb.Image(orig, masks={
