@@ -360,6 +360,7 @@ def train(
                 key, val = line[:split_idx].strip(), line[split_idx + 1:].strip()
                 wandb_config[key] = val
         wandb.init(project=wandb_project, config=wandb_config)
+        wandb.run.name = Path(args.config).with_suffix('').name + '-' + wandb.run.id
         # replace last callback with wandb
         callbacks[-1] = WandbCallback(save_model=False)
         callbacks.append(
