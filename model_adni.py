@@ -137,8 +137,6 @@ def vae_reg(
         z_score=False,
         data_format='channels_last',
 ):
-    assert not z_score, 'z-score not implemented yet'
-
     input_shape = input_shape + (1,) if data_format == 'channels_last' else (1,) + input_shape
 
     input = Input(input_shape)
@@ -172,6 +170,8 @@ def vae_reg(
     layer = UpConv3D(layer, filters=filters[0], name='dc6')
     layer = Conv3D(filters=1, kernel_size=(3, 3, 3), activation='linear', padding='SAME',
                    kernel_initializer='he_normal', name='cd7')(layer)
+    if z_score:
+        layer = Activation('tanh', name='tanh')(layer)
 
     model = Model([input], [layer])
     model.compile(
