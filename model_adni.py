@@ -1,4 +1,5 @@
 import gin
+import tensorflow as tf
 import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
@@ -130,8 +131,8 @@ def vae_reg(
         input_shape=(96, 96, 96),
         filters=(8, 16, 32, 64, 128, 256),
         weight_L2=1.,
-        weight_reg=1.,
-        weight_KL=0.1,
+        weight_reg=.1,
+        weight_KL=0.01,
         adam_lr=1e-4,
         adam_decay=.9,
         # TODO remove?
@@ -185,14 +186,24 @@ def vae_reg(
     reg_branch = Dense(32, activation='relu', name='reg_dense_2')(reg_branch)
     reg_branch = Dense(1, name='regression')(reg_branch)
 
-    model = Model([input], [reconstruction, reg_branch])
+    def kl_loss(*args, **kwargs):
+        return tf.reduce_mean(-.5 * (1 + log_var - tf.square(mu) - tf.exp(log_var)))
+
+    def num_active_dims(y_true, y_pred):
+        threshold = .1
+        _num_active_dims = tf.math.count_nonzero(tf.exp(log_var) < threshold)
+
+        return _num_active_dims
+
+    model = Model([input], [reconstruction, reg_branch, mu_logvar])
     model.compile(
         optimizer=Adam(
             lr=adam_lr,
             decay=adam_decay,
         ),
-        loss=['mse', 'mse'],
-        loss_weights=[weight_L2, weight_reg]
+        loss=['mse', 'mse', kl_loss],
+        loss_weights=[weight_L2, weight_reg, weight_KL],
+        metrics={mu_logvar.name.split('/')[0]: num_active_dims},
     )
 
     return model
