@@ -1,10 +1,12 @@
 import gin
 import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
-from tensorflow.python.keras.layers import Input, Flatten, Dropout, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
+from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
     PReLU, Add, Conv3DTranspose, SpatialDropout3D
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
+
+from utils import sampling
 
 
 def ActivationOp(
@@ -156,7 +158,9 @@ def vae_reg(
     layer_shape = K.int_shape(layer)
     layer = Flatten()(layer)
 
-    z = Dense(dim_latent_space, activation='relu', name='z')(layer)
+    mu_logvar = Dense(dim_latent_space * 2, name='mu_logvar')(layer)
+    mu, log_var = mu_logvar[:, :dim_latent_space], mu_logvar[:, dim_latent_space:]
+    z = Lambda(sampling, name='z')([mu, log_var])
 
     layer = Dense(layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4], activation='relu')(z)
     layer = Reshape((layer_shape[1], layer_shape[2], layer_shape[3], layer_shape[4]))(layer)
