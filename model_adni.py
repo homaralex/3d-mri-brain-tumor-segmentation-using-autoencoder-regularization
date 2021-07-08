@@ -159,8 +159,7 @@ def vae_reg(
     layer_shape = K.int_shape(layer)
     layer = Flatten()(layer)
 
-    mu_logvar = Dense(dim_latent_space * 2, name='mu_logvar')(layer)
-    mu, log_var = mu_logvar[:, :dim_latent_space], mu_logvar[:, dim_latent_space:]
+    mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
     z = Lambda(sampling, name='z')([mu, log_var])
 
     layer = Dense(layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4], activation='relu')(z)
@@ -195,7 +194,7 @@ def vae_reg(
 
         return _num_active_dims
 
-    model = Model([input], [reconstruction, reg_branch, mu_logvar])
+    model = Model([input], [reconstruction, reg_branch, log_var])
     model.compile(
         optimizer=Adam(
             lr=adam_lr,
@@ -203,7 +202,7 @@ def vae_reg(
         ),
         loss=['mse', 'mse', kl_loss],
         loss_weights=[weight_L2, weight_reg, weight_KL],
-        metrics={mu_logvar.name.split('/')[0]: num_active_dims},
+        metrics={log_var.name.split('/')[0]: num_active_dims},
     )
 
     return model
