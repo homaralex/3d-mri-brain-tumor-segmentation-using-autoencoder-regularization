@@ -135,22 +135,36 @@ def vae_reg(
         conv_weight_decay=None,
         dropout_rate=0.,
         dim_latent_space=1024,
-        # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
+        activation='relu',
         rec_activation='linear',
         data_format='channels_last',
 ):
     input_shape = input_shape + (1,) if data_format == 'channels_last' else (1,) + input_shape
 
     input = Input(input_shape)
-    layer = Conv3D(filters=filters[0], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='enc0', data_format=data_format)(input)
-    layer = DownConv3D(layer, filters=filters[1], name='enc1', data_format=data_format)
-    layer = Conv3D(filters=filters[2], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='enc3', data_format=data_format)(layer)
-    layer = DownConv3D(layer, filters=filters[3], name='enc3_5', data_format=data_format)
-    layer = DownConv3D(layer, filters=filters[4], name='enc4', data_format=data_format)
-    layer = DownConv3D(layer, filters=filters[5], name='enc5', data_format=data_format)
-    layer = DownConv3D(layer, filters=filters[5], name='enc6', data_format=data_format)
+    layer = Conv3D(
+        filters=filters[0],
+        kernel_size=(3, 3, 3),
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        padding='SAME',
+        kernel_initializer='he_normal',
+        name='enc0',
+        data_format=data_format,
+    )(input)
+    layer = DownConv3D(layer, filters=filters[1], name='enc1', data_format=data_format, activation=activation)
+    layer = Conv3D(
+        filters=filters[2],
+        kernel_size=(3, 3, 3),
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        padding='SAME',
+        kernel_initializer='he_normal',
+        name='enc3',
+        data_format=data_format,
+    )(layer)
+    layer = DownConv3D(layer, filters=filters[3], name='enc3_5', data_format=data_format, activation=activation)
+    layer = DownConv3D(layer, filters=filters[4], name='enc4', data_format=data_format, activation=activation)
+    layer = DownConv3D(layer, filters=filters[5], name='enc5', data_format=data_format, activation=activation)
+    layer = DownConv3D(layer, filters=filters[5], name='enc6', data_format=data_format, activation=activation)
     layer = SpatialDropout3D(dropout_rate)(layer)
     layer_shape = K.int_shape(layer)
     layer = Flatten()(layer)
@@ -158,25 +172,50 @@ def vae_reg(
     mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
     z = Lambda(sampling, name='z')([mu, log_var])
 
-    layer = Dense(layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4], activation='relu')(z)
+    layer = Dense(
+        layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+    )(z)
     layer = Reshape((layer_shape[1], layer_shape[2], layer_shape[3], layer_shape[4]))(layer)
 
-    layer = Conv3D(filters=filters[5], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='dc21', data_format=data_format)(layer)
-    layer = UpConv3D(layer, filters=filters[5], name='dc2', data_format=data_format)
-    layer = UpConv3D(layer, filters=filters[4], name='dc3', data_format=data_format)
-    layer = UpConv3D(layer, filters=filters[3], name='dc4', data_format=data_format)
-    layer = UpConv3D(layer, filters=filters[2], name='dc5', data_format=data_format)
-    layer = Conv3D(filters=filters[1], kernel_size=(3, 3, 3), activation='relu', padding='same',
-                   kernel_initializer='he_normal', name='dc22', data_format=data_format)(layer)
-    layer = UpConv3D(layer, filters=filters[0], name='dc6', data_format=data_format)
+    layer = Conv3D(
+        filters=filters[5],
+        kernel_size=(3, 3, 3),
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        padding='SAME',
+        kernel_initializer='he_normal',
+        name='dc21',
+        data_format=data_format,
+    )(layer)
+    layer = UpConv3D(layer, filters=filters[5], name='dc2', data_format=data_format, activation=activation)
+    layer = UpConv3D(layer, filters=filters[4], name='dc3', data_format=data_format, activation=activation)
+    layer = UpConv3D(layer, filters=filters[3], name='dc4', data_format=data_format, activation=activation)
+    layer = UpConv3D(layer, filters=filters[2], name='dc5', data_format=data_format, activation=activation)
+    layer = Conv3D(
+        filters=filters[1],
+        kernel_size=(3, 3, 3),
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        padding='same',
+        kernel_initializer='he_normal',
+        name='dc22',
+        data_format=data_format,
+    )(layer)
+    layer = UpConv3D(layer, filters=filters[0], name='dc6', data_format=data_format, activation=activation)
     reconstruction = Conv3D(filters=1, kernel_size=(3, 3, 3), activation=rec_activation, padding='SAME',
                             kernel_initializer='he_normal', name='reconstruction',
                             data_format=data_format)(layer)
 
     # regression head
-    reg_branch = Dense(128, activation='relu', name='reg_dense_1')(z)
-    reg_branch = Dense(32, activation='relu', name='reg_dense_2')(reg_branch)
+    reg_branch = Dense(
+        128,
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        name='reg_dense_1',
+    )(z)
+    reg_branch = Dense(
+        32,
+        activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        name='reg_dense_2',
+    )(reg_branch)
     reg_branch = Dense(1, name='regression')(reg_branch)
 
     def kl_loss(*args, **kwargs):
