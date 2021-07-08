@@ -2,7 +2,7 @@ import gin
 import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.layers import Input, Flatten, Dropout, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
-    PReLU, Add, Conv3DTranspose
+    PReLU, Add, Conv3DTranspose, SpatialDropout3D
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 
@@ -151,10 +151,9 @@ def vae_reg(
     layer = DownConv3D(layer, filters=filters[4], name='enc4', data_format=data_format)
     layer = DownConv3D(layer, filters=filters[5], name='enc5', data_format=data_format)
     layer = DownConv3D(layer, filters=filters[5], name='enc6', data_format=data_format)
+    layer = SpatialDropout3D(dropout_rate)(layer)
     layer_shape = K.int_shape(layer)
     layer = Flatten()(layer)
-    # TODO spatial dropout?
-    layer = Dropout(dropout_rate)(layer)
 
     z = Dense(dim_latent_space, activation='relu', name='z')(layer)
 
