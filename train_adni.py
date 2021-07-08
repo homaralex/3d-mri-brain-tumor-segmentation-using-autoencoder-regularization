@@ -54,7 +54,6 @@ def data_gen(
         augment=False,
 ):
     xs, ys = [], []
-    out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
     def yield_batch(xs, ys):
         # TODO CD scores
