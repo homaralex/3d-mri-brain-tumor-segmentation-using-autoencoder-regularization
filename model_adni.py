@@ -127,7 +127,8 @@ def UpConv3D(
 def vae_reg(
         input_shape=(96, 96, 96),
         filters=(8, 16, 32, 64, 128, 256),
-        weight_L2=0.1,
+        weight_L2=1.,
+        weight_reg=1.,
         weight_KL=0.1,
         adam_lr=1e-4,
         adam_decay=.9,
@@ -187,6 +188,7 @@ def vae_reg(
             decay=adam_decay,
         ),
         loss=['mse', 'mse'],
+        loss_weights=[weight_L2, weight_reg]
     )
 
     return model
