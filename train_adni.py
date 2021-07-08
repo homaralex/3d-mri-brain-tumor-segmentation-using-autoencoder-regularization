@@ -178,11 +178,7 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = vae_reg(
-        input_shape=input_shape,
-        data_format=data_format,
-        z_score=z_score,
-    )
+    model = vae_reg(input_shape=input_shape, data_format=data_format)
     model.summary()
 
     callbacks = [

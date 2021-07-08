@@ -122,11 +122,7 @@ def UpConv3D(
     return uc
 
 
-@gin.configurable(name_or_fn='model', denylist=[
-    'input_shape',
-    'z_score',
-    'data_format',
-])
+@gin.configurable(name_or_fn='model', denylist=['input_shape', 'data_format'])
 def vae_reg(
         input_shape=(96, 96, 96),
         filters=(8, 16, 32, 64, 128, 256),
@@ -140,7 +136,7 @@ def vae_reg(
         dropout_rate=0.,
         dim_latent_space=1024,
         # whether input is normalized to [0, 1] (we use sigmoid activations for VAE output then)
-        z_score=False,
+        rec_activation='linear',
         data_format='channels_last',
 ):
     input_shape = input_shape + (1,) if data_format == 'channels_last' else (1,) + input_shape
@@ -174,11 +170,9 @@ def vae_reg(
     layer = Conv3D(filters=filters[1], kernel_size=(3, 3, 3), activation='relu', padding='same',
                    kernel_initializer='he_normal', name='dc22', data_format=data_format)(layer)
     layer = UpConv3D(layer, filters=filters[0], name='dc6', data_format=data_format)
-    reconstruction = Conv3D(filters=1, kernel_size=(3, 3, 3), activation='linear', padding='SAME',
-                            kernel_initializer='he_normal', name='cd7' if z_score else 'reconstruction',
+    reconstruction = Conv3D(filters=1, kernel_size=(3, 3, 3), activation=rec_activation, padding='SAME',
+                            kernel_initializer='he_normal', name='reconstruction',
                             data_format=data_format)(layer)
-    if z_score:
-        reconstruction = Activation('sigmoid', name='reconstruction')(reconstruction)
 
     # regression head
     reg_branch = Dense(128, activation='relu', name='reg_dense_1')(z)
