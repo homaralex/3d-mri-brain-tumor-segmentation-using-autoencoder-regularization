@@ -7,25 +7,26 @@ import gin
 import pandas as pd
 import wandb
 from wandb.keras import WandbCallback
-import matplotlib.pyplot as plt
-import numpy as np  # For data manipulation
+import numpy as np
 import tensorflow.keras.callbacks as k_callbacks
 from tensorflow.python.framework.ops import disable_eager_execution
 
-from model import build_model  # For creating the model
+from model_adni import vae_reg
 
 SCAN_DIR_COL_NAME = 'scan_dir'
+
+
+def preprocessed_filename(input_shape):
+    return f'masked_{"_".join(str(s) for s in input_shape)}.npy'
 
 
 @gin.configurable(allowlist=['z_score'])
 def preprocess(
         img_path,
-        resized_path=None,
-        out_shape=None,
-        augment=True,
+        augment=False,
         z_score=False,
 ):
-    img = np.load(resized_path)
+    img = np.load(img_path)
     mean, std = img.mean(), img.std()
 
     if augment:
@@ -33,72 +34,59 @@ def preprocess(
         mean += std * np.random.uniform(-.1, .1)
         std *= np.random.uniform(.9, 1.1)
 
+        for ax_id in range(len(img.shape) - 1):
+            if random.getrandbits(1):
+                img = np.flip(img, axis=ax_id + 1)
+
     img = (img - mean) / std
     if z_score:
         img = (img - img.min()) / (img.max() - img.min())
 
-    return img
+    return np.expand_dims(img, 0)
 
 
-@gin.configurable(denylist=['data_paths'])
+@gin.configurable(denylist=['df'])
 def data_gen(
-        data_paths,
+        df,
         batch_size,
         input_shape,
-        modalities,
         data_format,
-        augment=True,
-        save_resized=True,
+        augment=False,
 ):
     xs, ys = [], []
     out_shape = input_shape[1:] if data_format == 'channels_first' else input_shape[:-1]
 
     def yield_batch(xs, ys):
-        xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
+        # TODO CD scores
+        # xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
+        xs, ys = np.array(xs), np.array(ys)
 
         if data_format == 'channels_last':
-            xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
+            # TODO CD scores
+            # xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
+            xs, ys = np.moveaxis(xs, 1, -1), np.moveaxis(ys, 1, -1)
 
         # fake output for the kld loss
-        ys.append(np.zeros((ys[0].shape[0], 1)))
+        # TODO
+        # ys.append(np.zeros((ys[0].shape[0], 1)))
 
         return xs, ys
 
+    filename = preprocessed_filename(input_shape)
     while True:
-        shuffled_paths = random.sample(data_paths, len(data_paths))
-        for imgs in shuffled_paths:
+        for _, row in df.sample(frac=1).iterrows():
             try:
-                resized_dir = imgs['seg'].parent / f'resized_{"_".join(str(s) for s in out_shape)}'
-                x = np.array([
-                    preprocess(
-                        img_path=imgs[m],
-                        out_shape=out_shape,
-                        resized_path=(resized_dir / imgs[m].name).with_suffix('').with_suffix(
-                            '.npz') if save_resized else None,
-                        augment=augment,
-                    ) for m in modalities],
-                    dtype=np.float32,
-                )
-                y = preprocess_label(
-                    img_path=imgs['seg'],
-                    out_shape=out_shape,
-                    resized_path=(resized_dir / imgs['seg'].name).with_suffix('').with_suffix(
-                        '.npz') if save_resized else None,
-                ).squeeze()
-                # we have to do axis flipping here to be consistent with all modalities
-                if augment:
-                    for ax_id in range(len(x.shape) - 1):
-                        if random.getrandbits(1):
-                            x = np.flip(x, axis=ax_id + 1)
-                            y = np.flip(y, axis=ax_id + 1)
-
+                x = preprocess(Path(row[SCAN_DIR_COL_NAME]) / filename, augment=augment)
+                y = row['CDGLOBAL']
             except Exception as e:
-                print(f'Something went wrong with {imgs[modalities[0]]}, skipping...\n Exception:\n{str(e)}')
+                print(f'Exception while loading: {row[SCAN_DIR_COL_NAME]}, skipping...\n Exception:\n{str(e)}')
                 continue
 
             xs.append(x)
             # return x as well for the VAE reconstruction loss
-            ys.append([y, x])
+            # TODO return y
+            # ys.append([y, x])
+            ys.append(x)
 
             if len(xs) == batch_size:
                 yield yield_batch(xs, ys)
@@ -114,50 +102,36 @@ def wandb_callback(
         data_gen,
         data_format,
 ):
-    segs, recs = [], []
-    while len(segs) < 4:
+    origs, recs = [], []
+    while len(recs) < 4:
         x, y = next(data_gen)
 
         # take the middle slice
         slice_idx = x[0].shape[1] // 2
         if data_format == 'channels_first':
-            seg_orig = y[0][0][0][slice_idx]
-            if seg_orig.sum() == 0:
-                continue
-
             preds = model.predict(x)
-            rec = preds[1][0][0][slice_idx]
+            # TODO handle multiple outputs
+            # rec = preds[1][0][0][slice_idx]
+            rec = preds[0][0][slice_idx]
             orig = x[0][0][slice_idx]
-            seg = preds[0][0][0][slice_idx]
         else:
-            seg_orig = y[0][0][:, :, :, 0][slice_idx]
-            if seg_orig.sum() == 0:
-                continue
-
             preds = model.predict(x)
-            rec = preds[1][0][:, :, :, 0][slice_idx]
-            orig = x[0][:, :, :, 0][slice_idx]
-            seg = preds[0][0][:, :, :, 0][slice_idx]
+            # TODO handle multiple outputs
+            # rec = preds[1][0][slice_idx]
+            rec = preds[0][slice_idx, :, :, 0]
+            orig = x[0][slice_idx, :, :, 0]
 
+        origs.append(wandb.Image(orig))
         recs.append(wandb.Image(rec))
-        mask_img = wandb.Image(orig, masks={
-            "predictions": {
-                "mask_data": seg,
-            },
-            "ground_truth": {
-                "mask_data": seg_orig,
-            },
-        })
-        segs.append(mask_img)
 
-    wandb.log({"reconstructions": recs})
-    wandb.log({"segmentations": segs})
+    wandb.log({'original': origs})
+    wandb.log({'reconstructions': recs})
 
 
 def get_dfs(data_root, input_shape, val_ratio):
     df = pd.read_pickle(data_root / 'df.pkl')
 
-    scan_dirs = set(p.parent for p in data_root.rglob(f'masked_{"_".join(str(s) for s in input_shape)}.npy'))
+    scan_dirs = set(p.parent for p in data_root.rglob(preprocessed_filename(input_shape)))
 
     rows = []
     for scan_dir in scan_dirs:
@@ -183,7 +157,7 @@ def get_dfs(data_root, input_shape, val_ratio):
 def train(
         data_root=gin.REQUIRED,
         val_ratio=.2,
-        model_name='ResNet3DVAE_Brats',
+        model_name='VAE_REG_ADNI',
         input_shape=(96, 96, 96),
         data_format='channels_last',
         z_score=False,
@@ -207,6 +181,7 @@ def train(
         val_ratio=val_ratio,
     )
 
+    df_train, df_val = df_train.iloc[:max_samples], df_val.iloc[:max_samples]
     print(f'Train samples: {len(df_train)}\nVal samples: {len(df_val)}')
 
     model_dir = Path('models') / model_name / datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
@@ -215,12 +190,12 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = build_model(
+    model = vae_reg(
         input_shape=input_shape,
-        output_channels=3,
         data_format=data_format,
         z_score=z_score,
     )
+    model.summary()
 
     callbacks = [
         k_callbacks.CSVLogger(filename=model_dir / 'log.csv'),
@@ -250,18 +225,18 @@ def train(
             k_callbacks.LambdaCallback(
                 on_epoch_end=lambda epoch, logs: wandb_callback(
                     model=model,
-                    data_gen=data_gen(data_paths_val, augment=False),
+                    data_gen=data_gen(df_val, augment=False),
                     data_format=data_format,
                 ),
             )
         )
 
     model.fit(
-        data_gen(data_paths_train),
+        data_gen(df_train),
         epochs=epochs,
-        steps_per_epoch=len(data_paths_train) // batch_size,
-        validation_data=data_gen(data_paths_val, augment=False),
-        validation_steps=len(data_paths_val) // batch_size,
+        steps_per_epoch=len(df_train) // batch_size,
+        validation_data=data_gen(df_val, augment=False),
+        validation_steps=len(df_train) // batch_size,
         callbacks=callbacks,
     )
 
