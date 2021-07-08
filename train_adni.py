@@ -56,14 +56,10 @@ def data_gen(
     xs, ys = [], []
 
     def yield_batch(xs, ys):
-        # TODO CD scores
-        # xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
-        xs, ys = np.array(xs), np.array(ys)
+        xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
 
         if data_format == 'channels_last':
-            # TODO CD scores
-            # xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), np.moveaxis(ys[1], 1, -1)]
-            xs, ys = np.moveaxis(xs, 1, -1), np.moveaxis(ys, 1, -1)
+            xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), ys[1]]
 
         # fake output for the kld loss
         # TODO
@@ -83,9 +79,7 @@ def data_gen(
 
             xs.append(x)
             # return x as well for the VAE reconstruction loss
-            # TODO return y
-            # ys.append([y, x])
-            ys.append(x)
+            ys.append([x, y])
 
             if len(xs) == batch_size:
                 yield yield_batch(xs, ys)
@@ -109,15 +103,11 @@ def wandb_callback(
         slice_idx = x[0].shape[1] // 2
         if data_format == 'channels_first':
             preds = model.predict(x)
-            # TODO handle multiple outputs
-            # rec = preds[1][0][0][slice_idx]
-            rec = preds[0][0][slice_idx]
+            rec = preds[0][0][0][slice_idx]
             orig = x[0][0][slice_idx]
         else:
             preds = model.predict(x)
-            # TODO handle multiple outputs
-            # rec = preds[1][0][slice_idx]
-            rec = preds[0][slice_idx, :, :, 0]
+            rec = preds[0][0][slice_idx, :, :, 0]
             orig = x[0][slice_idx, :, :, 0]
 
         origs.append(wandb.Image(orig))
