@@ -73,6 +73,7 @@ def DownConv3D(
         activation='relu',
         kernel_initializer='he_normal',
         name=None,
+        data_format=None,
 ):
     if isinstance(strides, int):
         strides = (strides, strides, strides)
@@ -84,6 +85,7 @@ def DownConv3D(
         activation='linear',
         name='{}_dc0'.format(name),
         kernel_initializer=kernel_initializer,
+        data_format=data_format,
     )(layer_in)
     dc = ActivationOp(dc, activation, name='{}_a0'.format(name))
     return dc
@@ -141,45 +143,45 @@ def vae_reg(
 
     input = Input(input_shape)
     layer = Conv3D(filters=filters[0], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='enc0')(input)
-    layer = DownConv3D(layer, filters=filters[1], name='enc1')
+                   kernel_initializer='he_normal', name='enc0', data_format=data_format)(input)
+    layer = DownConv3D(layer, filters=filters[1], name='enc1', data_format=data_format)
     layer = Conv3D(filters=filters[2], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='enc3')(layer)
-    layer = DownConv3D(layer, filters=filters[3], name='enc3_5')
-    layer = DownConv3D(layer, filters=filters[4], name='enc4')
-    layer = DownConv3D(layer, filters=filters[5], name='enc5')
-    layer = DownConv3D(layer, filters=filters[5], name='enc6')
+                   kernel_initializer='he_normal', name='enc3', data_format=data_format)(layer)
+    layer = DownConv3D(layer, filters=filters[3], name='enc3_5', data_format=data_format)
+    layer = DownConv3D(layer, filters=filters[4], name='enc4', data_format=data_format)
+    layer = DownConv3D(layer, filters=filters[5], name='enc5', data_format=data_format)
+    layer = DownConv3D(layer, filters=filters[5], name='enc6', data_format=data_format)
     layer_shape = K.int_shape(layer)
     layer = Flatten()(layer)
     # TODO spatial dropout?
     layer = Dropout(dropout_rate)(layer)
 
-    layer = Dense(dim_latent_space, activation='relu')(layer)
+    z = Dense(dim_latent_space, activation='relu', name='z')(layer)
 
-    layer = Dense(layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4], activation='relu')(layer)
+    layer = Dense(layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4], activation='relu')(z)
     layer = Reshape((layer_shape[1], layer_shape[2], layer_shape[3], layer_shape[4]))(layer)
 
     layer = Conv3D(filters=filters[5], kernel_size=(3, 3, 3), activation='relu', padding='SAME',
-                   kernel_initializer='he_normal', name='dc21')(layer)
-    layer = UpConv3D(layer, filters=filters[5], name='dc2')
-    layer = UpConv3D(layer, filters=filters[4], name='dc3')
-    layer = UpConv3D(layer, filters=filters[3], name='dc4')
-    layer = UpConv3D(layer, filters=filters[2], name='dc5')
+                   kernel_initializer='he_normal', name='dc21', data_format=data_format)(layer)
+    layer = UpConv3D(layer, filters=filters[5], name='dc2', data_format=data_format)
+    layer = UpConv3D(layer, filters=filters[4], name='dc3', data_format=data_format)
+    layer = UpConv3D(layer, filters=filters[3], name='dc4', data_format=data_format)
+    layer = UpConv3D(layer, filters=filters[2], name='dc5', data_format=data_format)
     layer = Conv3D(filters=filters[1], kernel_size=(3, 3, 3), activation='relu', padding='same',
-                   kernel_initializer='he_normal', name='dc22')(layer)
-    layer = UpConv3D(layer, filters=filters[0], name='dc6')
-    layer = Conv3D(filters=1, kernel_size=(3, 3, 3), activation='linear', padding='SAME',
-                   kernel_initializer='he_normal', name='cd7')(layer)
+                   kernel_initializer='he_normal', name='dc22', data_format=data_format)(layer)
+    layer = UpConv3D(layer, filters=filters[0], name='dc6', data_format=data_format)
+    reconstruction = Conv3D(filters=1, kernel_size=(3, 3, 3), activation='linear', padding='SAME',
+                            kernel_initializer='he_normal', name='cd7', data_format=data_format)(layer)
     if z_score:
-        layer = Activation('sigmoid', name='sigmoid')(layer)
+        reconstruction = Activation('sigmoid', name='sigmoid')(reconstruction)
 
-    model = Model([input], [layer])
+    model = Model([input], [reconstruction])
     model.compile(
         optimizer=Adam(
             lr=adam_lr,
             decay=adam_decay,
         ),
-        loss='mean_squared_error',
+        loss='mse',
         metrics=['mse'],
     )
 
