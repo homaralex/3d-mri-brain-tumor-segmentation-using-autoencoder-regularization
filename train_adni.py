@@ -95,22 +95,27 @@ def wandb_callback(
         data_format,
 ):
     origs, recs = [], []
-    while len(recs) < 4:
-        x, y = next(data_gen)
-
-        # take the middle slice
-        slice_idx = x[0].shape[1] // 2
-        if data_format == 'channels_first':
+    for i in range(3):
+        for _ in range(4):
+            x, y = next(data_gen)
             preds = model.predict(x)
-            rec = preds[0][0][0][slice_idx]
-            orig = x[0][0][slice_idx]
-        else:
-            preds = model.predict(x)
-            rec = preds[0][0][slice_idx, :, :, 0]
-            orig = x[0][slice_idx, :, :, 0]
+            if data_format == 'channels_first':
+                slice_idx = x[0].shape[i + 1] // 2
+                idxs = [0, slice(None), slice(None), slice(None)]
+                idxs[i + 1] = slice_idx
 
-        origs.append(wandb.Image(orig))
-        recs.append(wandb.Image(rec))
+                rec = preds[0][0][slice_idx]
+                orig = x[0][slice_idx]
+            else:
+                slice_idx = x[0].shape[i] // 2
+                idxs = [slice(None), slice(None), slice(None), 0]
+                idxs[i] = slice_idx
+
+                rec = preds[0][0][idxs]
+                orig = x[0][idxs]
+
+            origs.append(wandb.Image(orig))
+            recs.append(wandb.Image(rec))
 
     wandb.log({'original': origs})
     wandb.log({'reconstructions': recs})
