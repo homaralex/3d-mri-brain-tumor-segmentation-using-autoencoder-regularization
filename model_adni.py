@@ -4,7 +4,7 @@ import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
-    PReLU, Add, Conv3DTranspose, SpatialDropout3D
+    PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 
@@ -133,9 +133,8 @@ def vae_reg(
         weight_L2=1.,
         weight_reg=.1,
         weight_KL=0.01,
-        # TODO remove?
-        conv_weight_decay=None,
         dropout_rate=0.,
+        reg_dropout_rate=0.,
         dim_latent_space=1024,
         activation='relu',
         rec_activation='linear',
@@ -213,6 +212,7 @@ def vae_reg(
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_1',
     )(z)
+    reg_branch = Dropout(reg_dropout_rate)(reg_branch)
     reg_branch = Dense(
         32,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
