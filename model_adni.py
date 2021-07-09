@@ -2,6 +2,7 @@ import gin
 import tensorflow as tf
 import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
     PReLU, Add, Conv3DTranspose, SpatialDropout3D
 from tensorflow.python.keras.models import Model
@@ -171,7 +172,7 @@ def vae_reg(
     layer = Flatten()(layer)
 
     mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
-    z = Lambda(sampling, name='z')([mu, log_var])
+    z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(sampling, name='z')([mu, log_var])
 
     layer = Dense(
         layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
