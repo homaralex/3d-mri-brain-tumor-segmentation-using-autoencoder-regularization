@@ -9,6 +9,8 @@ from tensorflow.python.keras.optimizers import Adam
 
 from utils import sampling
 
+gin.external_configurable(Model.fit, 'model_fit')
+
 
 def ActivationOp(
         layer_in,

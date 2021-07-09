@@ -222,6 +222,8 @@ def train(
         validation_data=data_gen(df_val, augment=False),
         validation_steps=len(df_train) // batch_size,
         callbacks=callbacks,
+        workers=2,
+        use_multiprocessing=True,
     )
 
 
