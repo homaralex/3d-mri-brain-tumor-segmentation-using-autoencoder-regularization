@@ -10,6 +10,7 @@ from tensorflow.python.keras.optimizers import Adam
 from utils import sampling
 
 gin.external_configurable(Model.fit, 'model_fit')
+gin.external_configurable(Adam, 'Adam')
 
 
 def ActivationOp(
@@ -131,8 +132,6 @@ def vae_reg(
         weight_L2=1.,
         weight_reg=.1,
         weight_KL=0.01,
-        adam_lr=1e-4,
-        adam_decay=.9,
         # TODO remove?
         conv_weight_decay=None,
         dropout_rate=0.,
@@ -231,10 +230,7 @@ def vae_reg(
 
     model = Model([input], [reconstruction, reg_branch, log_var])
     model.compile(
-        optimizer=Adam(
-            lr=adam_lr,
-            decay=adam_decay,
-        ),
+        optimizer=Adam(),
         loss=['mse', 'mse', kl_loss],
         loss_weights=[weight_L2, weight_reg, weight_KL],
         metrics={log_var.name.split('/')[0]: num_active_dims},
