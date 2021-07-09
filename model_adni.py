@@ -224,7 +224,7 @@ def vae_reg(
 
     def num_active_dims(y_true, y_pred):
         threshold = .1
-        _num_active_dims = tf.math.count_nonzero(tf.exp(log_var) < threshold)
+        _num_active_dims = tf.reduce_mean(tf.math.count_nonzero(tf.exp(log_var) < threshold, axis=-1))
 
         return _num_active_dims
 
