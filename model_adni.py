@@ -208,13 +208,13 @@ def vae_reg(
 
     # regression head
     reg_branch = Dense(
-        128,
+        32,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_1',
     )(z)
     reg_branch = Dropout(reg_dropout_rate)(reg_branch)
     reg_branch = Dense(
-        32,
+        8,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_2',
     )(reg_branch)
@@ -231,8 +231,8 @@ def vae_reg(
 
     def r_squared(y_true, y_pred):
         # taken from https://stackoverflow.com/questions/45250100/kerasregressor-coefficient-of-determination-r2-score
-        SS_res = tf.reduce_sum(tf.square(y_true - y_pred))
-        SS_tot = tf.reduce_sum(tf.square(y_true - tf.reduce_mean(y_true)))
+        SS_res = tf.reduce_mean(tf.square(y_true - y_pred))
+        SS_tot = tf.reduce_mean(tf.square(y_true - tf.reduce_mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
     model = Model([input], [reconstruction, reg_branch, log_var])
