@@ -8,7 +8,7 @@ from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshap
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 
-from utils import sampling
+from utils import sampling, deterministic_val_sampling
 
 gin.external_configurable(Model.fit, 'model_fit')
 gin.external_configurable(Adam, 'Adam')
@@ -172,7 +172,8 @@ def vae_reg(
     layer = Flatten()(layer)
 
     mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
-    z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(sampling, name='z')([mu, log_var, deterministic_val_pass])
+    z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(
+        deterministic_val_sampling if deterministic_val_pass else sampling, name='z')([mu, log_var])
 
     layer = Dense(
         layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
