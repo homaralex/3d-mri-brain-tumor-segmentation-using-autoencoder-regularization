@@ -139,6 +139,7 @@ def vae_reg(
         activation='relu',
         rec_activation='linear',
         data_format='channels_last',
+        deterministic_val_pass=True,
 ):
     input_shape = input_shape + (1,) if data_format == 'channels_last' else (1,) + input_shape
 
@@ -171,7 +172,7 @@ def vae_reg(
     layer = Flatten()(layer)
 
     mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
-    z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(sampling, name='z')([mu, log_var])
+    z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(sampling, name='z')([mu, log_var, deterministic_val_pass])
 
     layer = Dense(
         layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
