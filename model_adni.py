@@ -7,6 +7,7 @@ from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshap
     PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
+from tensorflow_addons.metrics import RSquare
 
 from utils import sampling
 
@@ -234,7 +235,10 @@ def vae_reg(
         optimizer=Adam(),
         loss=['mse', 'mse', kl_loss],
         loss_weights=[weight_L2, weight_reg, weight_KL],
-        metrics={log_var.name.split('/')[0]: num_active_dims},
+        metrics={
+            log_var.name.split('/')[0]: num_active_dims,
+            'regression': RSquare(y_shape=(1,)),
+        },
     )
 
     return model
