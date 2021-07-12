@@ -7,7 +7,6 @@ from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshap
     PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
-from tensorflow_addons.metrics import RSquare
 
 from utils import sampling
 
@@ -230,6 +229,12 @@ def vae_reg(
 
         return _num_active_dims
 
+    def r_squared(y_true, y_pred):
+        # taken from https://stackoverflow.com/questions/45250100/kerasregressor-coefficient-of-determination-r2-score
+        SS_res = tf.reduce_sum(tf.square(y_true - y_pred))
+        SS_tot = tf.reduce_sum(tf.square(y_true - tf.reduce_mean(y_true)))
+        return 1 - SS_res / (SS_tot + K.epsilon())
+
     model = Model([input], [reconstruction, reg_branch, log_var])
     model.compile(
         optimizer=Adam(),
@@ -237,7 +242,7 @@ def vae_reg(
         loss_weights=[weight_L2, weight_reg, weight_KL],
         metrics={
             log_var.name.split('/')[0]: num_active_dims,
-            'regression': RSquare(y_shape=(1,)),
+            'regression': r_squared,
         },
     )
 
