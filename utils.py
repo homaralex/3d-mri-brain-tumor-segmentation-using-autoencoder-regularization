@@ -16,7 +16,7 @@ def deterministic_val_sampling(args):
     # by default, random_normal has mean = 0 and std = 1.0
     epsilon = tf.random.normal(shape=(batch, dim))
     training = K.learning_phase()
-    epsilon = epsilon * training
+    epsilon = epsilon * tf.cast(training, tf.float32)
 
     return z_mean + tf.exp(0.5 * z_log_var) * epsilon
 
