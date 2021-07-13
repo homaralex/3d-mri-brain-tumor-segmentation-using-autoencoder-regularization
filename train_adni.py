@@ -8,6 +8,7 @@ import pandas as pd
 import wandb
 from wandb.keras import WandbCallback
 import numpy as np
+from scipy.ndimage import rotate
 import tensorflow.keras.callbacks as k_callbacks
 from tensorflow.python.framework.ops import disable_eager_execution
 
@@ -30,10 +31,22 @@ def preprocess(
     mean, std = img.mean(), img.std()
 
     if augment:
-        # random intensity and scale shifts
-        mean += std * np.random.uniform(-.1, .1)
-        std *= np.random.uniform(.9, 1.1)
+        # random rotation
+        axes = np.random.choice(
+            (0, 1, 2),
+            size=2,
+            replace=False,
+        )
+        angle = np.random.randint(0, 6)
+        rotate(
+            img,
+            angle=angle,
+            axes=axes,
+            prefilter=False,
+            reshape=False,
+        )
 
+        # axis flipping
         for ax_id in range(len(img.shape) - 1):
             if random.getrandbits(1):
                 img = np.flip(img, axis=ax_id + 1)
@@ -45,7 +58,7 @@ def preprocess(
     return np.expand_dims(img, 0)
 
 
-@gin.configurable(denylist=['df'])
+@gin.configurable(denylist=['df', 'augment'])
 def data_gen(
         df,
         batch_size,
@@ -154,6 +167,7 @@ def train(
         input_shape=(96, 96, 96),
         data_format='channels_last',
         z_score=False,
+        augment=False,
         batch_size=1,
         epochs=300,
         wandb_project=None,
@@ -221,7 +235,7 @@ def train(
         )
 
     model.fit(
-        data_gen(df_train),
+        data_gen(df_train, augment=augment),
         epochs=epochs,
         steps_per_epoch=len(df_train) // batch_size,
         validation_data=data_gen(df_val, augment=False),
