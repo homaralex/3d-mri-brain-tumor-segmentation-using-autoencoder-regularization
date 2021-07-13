@@ -136,6 +136,7 @@ def vae_reg(
         dropout_rate=0.,
         reg_dropout_rate=0.,
         dim_latent_space=1024,
+        dim_reg_branch=32,
         activation='relu',
         rec_activation='linear',
         data_format='channels_last',
@@ -210,13 +211,13 @@ def vae_reg(
 
     # regression head
     reg_branch = Dense(
-        32,
+        dim_reg_branch,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_1',
     )(z)
     reg_branch = Dropout(reg_dropout_rate)(reg_branch)
     reg_branch = Dense(
-        8,
+        dim_reg_branch // 4,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_2',
     )(reg_branch)
