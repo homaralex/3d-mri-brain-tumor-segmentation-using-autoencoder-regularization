@@ -38,7 +38,7 @@ def preprocess(
             replace=False,
         )
         angle = np.random.randint(0, 6)
-        rotate(
+        img = rotate(
             img,
             angle=angle,
             axes=axes,
