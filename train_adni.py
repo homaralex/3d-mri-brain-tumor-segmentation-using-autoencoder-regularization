@@ -65,6 +65,7 @@ def data_gen(
         input_shape,
         data_format,
         augment=False,
+        binary=False,
 ):
     xs, ys = [], []
 
@@ -84,7 +85,7 @@ def data_gen(
         for _, row in df.sample(frac=1).iterrows():
             try:
                 x = preprocess(Path(row[SCAN_DIR_COL_NAME]) / filename, augment=augment)
-                y = row['CDGLOBAL']
+                y = int(row['CDGLOBAL'] >= .5) if binary else row['CDGLOBAL']
             except Exception as e:
                 print(f'Exception while loading: {row[SCAN_DIR_COL_NAME]}, skipping...\n Exception:\n{str(e)}')
                 continue
@@ -167,6 +168,7 @@ def train(
         input_shape=(96, 96, 96),
         data_format='channels_last',
         z_score=False,
+        binary=False,
         augment=False,
         batch_size=1,
         epochs=300,
@@ -178,6 +180,7 @@ def train(
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.data_format', data_format)
+    gin.bind_parameter('data_gen.binary', binary)
     gin.bind_parameter('preprocess.z_score', z_score)
 
     data_root = Path(data_root)
@@ -197,7 +200,11 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = vae_reg(input_shape=input_shape, data_format=data_format)
+    model = vae_reg(
+        input_shape=input_shape,
+        data_format=data_format,
+        binary=binary,
+    )
     model.summary()
 
     callbacks = [

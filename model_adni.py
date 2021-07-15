@@ -137,6 +137,7 @@ def vae_reg(
         reg_dropout_rate=0.,
         dim_latent_space=1024,
         dim_reg_branch=32,
+        binary=False,
         activation='relu',
         rec_activation='linear',
         data_format='channels_last',
@@ -221,7 +222,8 @@ def vae_reg(
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
         name='reg_dense_2',
     )(reg_branch)
-    reg_branch = Dense(1, name='regression')(reg_branch)
+    reg_branch = (Dense(1, activation='sigmoid', name='classification') if binary else Dense(1, name='regression'))(
+        reg_branch)
 
     def kl_loss(*args, **kwargs):
         return tf.reduce_mean(-.5 * (1 + log_var - tf.square(mu) - tf.exp(log_var)))
@@ -241,11 +243,19 @@ def vae_reg(
     model = Model([input], [reconstruction, reg_branch, log_var])
     model.compile(
         optimizer=Adam(),
-        loss=['mse', 'mse', kl_loss],
-        loss_weights=[weight_L2, weight_reg, weight_KL],
+        loss=[
+            'mse',
+            'binary_crossentropy' if binary else 'mse',
+            kl_loss,
+        ],
+        loss_weights=[
+            weight_L2,
+            weight_reg,
+            weight_KL,
+        ],
         metrics={
             log_var.name.split('/')[0]: num_active_dims,
-            'regression': r_squared,
+            **({'classification': 'acc'} if binary else {'regression': r_squared}),
         },
     )
 
