@@ -66,7 +66,9 @@ def data_gen(
         data_format,
         augment=False,
         binary=False,
+        max_val=False,
 ):
+    target_col_name = 'CDGLOBAL_MAX' if max_val else 'CDGLOBAL'
     xs, ys = [], []
 
     def yield_batch(xs, ys):
@@ -85,7 +87,7 @@ def data_gen(
         for _, row in df.sample(frac=1).iterrows():
             try:
                 x = preprocess(Path(row[SCAN_DIR_COL_NAME]) / filename, augment=augment)
-                y = int(row['CDGLOBAL'] >= .5) if binary else row['CDGLOBAL']
+                y = int(row[target_col_name] >= .5) if binary else row[target_col_name]
             except Exception as e:
                 print(f'Exception while loading: {row[SCAN_DIR_COL_NAME]}, skipping...\n Exception:\n{str(e)}')
                 continue
