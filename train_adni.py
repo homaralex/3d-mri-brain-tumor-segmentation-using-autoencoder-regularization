@@ -137,7 +137,13 @@ def wandb_callback(
     wandb.log({'reconstructions': recs})
 
 
-def get_dfs(data_root, input_shape, val_ratio):
+def get_dfs(
+        data_root,
+        input_shape,
+        val_ratio,
+        max_val,
+        balance_ad,
+):
     df = pd.read_pickle(data_root / 'df.pkl')
 
     scan_dirs = set(p.parent for p in data_root.rglob(preprocessed_filename(input_shape)))
@@ -155,9 +161,20 @@ def get_dfs(data_root, input_shape, val_ratio):
     df = pd.concat(rows)
 
     num_subjects = len(df['Subject'].unique())
-    val_subjects = np.random.choice(df['Subject'].unique(), int(val_ratio * num_subjects))
-    df_val = df.loc[df['Subject'].isin(val_subjects)]
-    df_train = df.loc[~df['Subject'].isin(val_subjects)]
+
+    target_col_name = 'CDGLOBAL_MAX' if max_val else 'CDGLOBAL'
+    while True:
+        # try to keep an equal ratio of AD subjects in both subsets of data
+        val_subjects = np.random.choice(df['Subject'].unique(), int(val_ratio * num_subjects))
+        df_val = df.loc[df['Subject'].isin(val_subjects)]
+        df_train = df.loc[~df['Subject'].isin(val_subjects)]
+
+        mean_ad_val = (df_val[target_col_name].values >= .5).mean()
+        mean_ad_train = (df_train[target_col_name].values >= .5).mean()
+
+        if not balance_ad or np.abs(mean_ad_val - mean_ad_train) < .01:
+            print(f'Mean AD:\nTrain: {mean_ad_train}\nVal: {mean_ad_val}')
+            break
 
     return df_train, df_val
 
@@ -172,6 +189,8 @@ def train(
         z_score=False,
         binary=False,
         augment=False,
+        max_val=False,
+        balance_ad=True,
         batch_size=1,
         epochs=300,
         wandb_project=None,
@@ -183,6 +202,7 @@ def train(
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.data_format', data_format)
     gin.bind_parameter('data_gen.binary', binary)
+    gin.bind_parameter('data_gen.max_val', max_val)
     gin.bind_parameter('preprocess.z_score', z_score)
 
     data_root = Path(data_root)
@@ -191,6 +211,8 @@ def train(
         data_root=data_root,
         input_shape=input_shape,
         val_ratio=val_ratio,
+        max_val=max_val,
+        balance_ad=balance_ad,
     )
 
     df_train, df_val = df_train.iloc[:max_samples], df_val.iloc[:max_samples]
