@@ -11,7 +11,8 @@ from tensorflow.python.keras.optimizers import Adam
 from utils import sampling, deterministic_val_sampling
 
 gin.external_configurable(Model.fit, 'model_fit')
-gin.external_configurable(Adam, 'Adam')
+Adam = gin.external_configurable(Adam, 'Adam')
+Conv3D = gin.external_configurable(Conv3D, 'Conv3D')
 
 
 def ActivationOp(
@@ -135,6 +136,7 @@ def vae_reg(
         weight_KL=0.01,
         dropout_rate=0.,
         reg_dropout_rate=0.,
+        weight_decay=None,
         dim_latent_space=1024,
         dim_reg_branch=32,
         binary=False,
@@ -144,6 +146,9 @@ def vae_reg(
         data_format='channels_last',
         deterministic_val_pass=True,
 ):
+    if weight_decay is not None:
+        gin.bind_parameter('Conv3D.kernel_regularizer', keras.regularizers.L1L2(l2=weight_decay))
+
     input_shape = input_shape + (1,) if data_format == 'channels_last' else (1,) + input_shape
 
     input = Input(input_shape)
@@ -185,6 +190,7 @@ def vae_reg(
     layer = Dense(
         layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        kernel_regularizer=None if weight_decay is None else keras.regularizers.L1L2(l2=weight_decay),
     )(z)
     layer = Reshape((layer_shape[1], layer_shape[2], layer_shape[3], layer_shape[4]))(layer)
 
@@ -219,12 +225,14 @@ def vae_reg(
     reg_branch = Dense(
         dim_reg_branch,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        kernel_regularizer=None if weight_decay is None else keras.regularizers.L1L2(l2=weight_decay),
         name='reg_dense_1',
     )(z)
     reg_branch = Dropout(reg_dropout_rate)(reg_branch)
     reg_branch = Dense(
         dim_reg_branch // 4,
         activation=tf.python.keras.layers.LeakyReLU(.1) if activation == 'leakyrelu' else activation,
+        kernel_regularizer=None if weight_decay is None else keras.regularizers.L1L2(l2=weight_decay),
         name='reg_dense_2',
     )(reg_branch)
     reg_branch = (Dense(1, activation='sigmoid', name='classification') if binary else Dense(1, name='regression'))(
