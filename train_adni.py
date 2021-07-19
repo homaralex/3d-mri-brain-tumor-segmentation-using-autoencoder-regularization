@@ -5,6 +5,8 @@ from pathlib import Path
 
 import gin
 import pandas as pd
+from skimage import exposure
+
 import wandb
 from wandb.keras import WandbCallback
 import numpy as np
@@ -45,6 +47,10 @@ def preprocess(
             prefilter=False,
             reshape=False,
         )
+
+        # random gamma correction [.5, 3]
+        gamma = np.random.randint(.5, 3)
+        img = exposure.adjust_gamma(img, gamma)
 
         # random translation
         translated = np.zeros_like(img)
