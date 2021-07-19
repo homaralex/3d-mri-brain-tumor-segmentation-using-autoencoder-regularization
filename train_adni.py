@@ -46,6 +46,20 @@ def preprocess(
             reshape=False,
         )
 
+        # random translation
+        translated = np.zeros_like(img)
+        shifts = np.random.randint(-5, 5, size=(2,))
+        w, h = img.shape[:2]
+        cropped = img[
+                  shifts[0] if shifts[0] > 0 else None:w + shifts[0] if shifts[0] < 0 else None,
+                  shifts[1] if shifts[1] > 0 else None:h + shifts[1] if shifts[1] < 0 else None,
+                  ]
+        translated[
+        -shifts[0] if shifts[0] < 0 else None:cropped.shape[0] if shifts[0] > 0 else None,
+        -shifts[1] if shifts[1] < 0 else None:cropped.shape[1] if shifts[1] > 0 else None,
+        ] = cropped
+        img = translated
+
         # axis flipping
         for ax_id in range(len(img.shape) - 1):
             if random.getrandbits(1):
