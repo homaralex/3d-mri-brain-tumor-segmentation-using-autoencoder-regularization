@@ -67,15 +67,18 @@ def data_gen(
         augment=False,
         binary=False,
         max_val=False,
+        add_covariates=None,
 ):
     target_col_name = 'CDGLOBAL_MAX' if max_val else 'CDGLOBAL'
     xs, ys = [], []
 
     def yield_batch(xs, ys):
-        xs, ys = np.array(xs), [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
+        xs = np.array(xs) if add_covariates is None else [np.array([x[0] for x in xs]), np.array([x[1] for x in xs])]
+        ys = [np.array([y[0] for y in ys]), np.array([y[1] for y in ys])]
 
         if data_format == 'channels_last':
-            xs, ys = np.moveaxis(xs, 1, -1), [np.moveaxis(ys[0], 1, -1), ys[1]]
+            ys = [np.moveaxis(ys[0], 1, -1), ys[1]]
+            xs = np.moveaxis(xs, 1, -1) if add_covariates is None else [np.moveaxis(xs[0], 1, -1), xs[1]]
 
         # fake output for the kld loss
         ys.append(np.zeros((ys[0].shape[0], 1)))
@@ -86,15 +89,18 @@ def data_gen(
     while True:
         for _, row in df.sample(frac=1).iterrows():
             try:
-                x = preprocess(Path(row[SCAN_DIR_COL_NAME]) / filename, augment=augment)
+                x = img = preprocess(Path(row[SCAN_DIR_COL_NAME]) / filename, augment=augment)
+                if add_covariates is not None:
+                    x = [x, row[add_covariates].values]
+
                 y = int(row[target_col_name] >= .5) if binary else row[target_col_name]
             except Exception as e:
                 print(f'Exception while loading: {row[SCAN_DIR_COL_NAME]}, skipping...\n Exception:\n{str(e)}')
                 continue
 
             xs.append(x)
-            # return x as well for the VAE reconstruction loss
-            ys.append([x, y])
+            # return img as well for the VAE reconstruction loss
+            ys.append([img, y])
 
             if len(xs) == batch_size:
                 yield yield_batch(xs, ys)
@@ -114,21 +120,22 @@ def wandb_callback(
     for i in range(3):
         for _ in range(4):
             x, y = next(data_gen)
+            orig_scans = y[0]
             preds = model.predict(x)
             if data_format == 'channels_first':
-                slice_idx = x[0].shape[i + 1] // 2
+                slice_idx = orig_scans[0].shape[i + 1] // 2
                 idxs = [0, slice(None), slice(None), slice(None)]
                 idxs[i + 1] = slice_idx
 
                 rec = preds[0][0][slice_idx]
-                orig = x[0][slice_idx]
+                orig = orig_scans[0][slice_idx]
             else:
-                slice_idx = x[0].shape[i] // 2
+                slice_idx = orig_scans[0].shape[i] // 2
                 idxs = [slice(None), slice(None), slice(None), 0]
                 idxs[i] = slice_idx
 
                 rec = preds[0][0][idxs]
-                orig = x[0][idxs]
+                orig = orig_scans[0][idxs]
 
             origs.append(wandb.Image(orig))
             recs.append(wandb.Image(rec))
@@ -143,8 +150,11 @@ def get_dfs(
         val_ratio,
         max_val,
         balance_ad,
+        add_covariates,
 ):
     df = pd.read_pickle(data_root / 'df.pkl')
+    df = df.loc[df['Sex'] != 'X']
+    df['Sex'] = df['Sex'].astype('category').cat.codes
 
     scan_dirs = set(p.parent for p in data_root.rglob(preprocessed_filename(input_shape)))
 
@@ -176,6 +186,12 @@ def get_dfs(
             print(f'Mean AD:\nTrain: {mean_ad_train}\nVal: {mean_ad_val}')
             break
 
+    if add_covariates is not None:
+        for cov_name in add_covariates:
+            mu, std = df_train[cov_name].mean(), df_train[cov_name].std()
+            df_train[cov_name] = (df_train[cov_name] - mu) / std
+            df_val[cov_name] = (df_val[cov_name] - mu) / std
+
     return df_train, df_val
 
 
@@ -191,6 +207,7 @@ def train(
         augment=False,
         max_val=False,
         balance_ad=True,
+        add_covariates=None,
         batch_size=1,
         epochs=300,
         wandb_project=None,
@@ -203,6 +220,7 @@ def train(
     gin.bind_parameter('data_gen.data_format', data_format)
     gin.bind_parameter('data_gen.binary', binary)
     gin.bind_parameter('data_gen.max_val', max_val)
+    gin.bind_parameter('data_gen.add_covariates', add_covariates)
     gin.bind_parameter('preprocess.z_score', z_score)
 
     data_root = Path(data_root)
@@ -213,6 +231,7 @@ def train(
         val_ratio=val_ratio,
         max_val=max_val,
         balance_ad=balance_ad,
+        add_covariates=add_covariates,
     )
 
     df_train, df_val = df_train.iloc[:max_samples], df_val.iloc[:max_samples]
@@ -228,6 +247,7 @@ def train(
         input_shape=input_shape,
         data_format=data_format,
         binary=binary,
+        add_covariates=add_covariates,
     )
     model.summary()
 

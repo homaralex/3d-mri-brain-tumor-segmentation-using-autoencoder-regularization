@@ -4,7 +4,7 @@ import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
-    PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout
+    PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout, Concatenate
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 
@@ -138,6 +138,7 @@ def vae_reg(
         dim_latent_space=1024,
         dim_reg_branch=32,
         binary=False,
+        add_covariates=None,
         activation='relu',
         rec_activation='linear',
         data_format='channels_last',
@@ -176,6 +177,10 @@ def vae_reg(
     mu, log_var = Dense(dim_latent_space, name='mu')(layer), Dense(dim_latent_space, name='log_var')(layer)
     z = Layer(name='z')(mu) if weight_KL == 0 else Lambda(
         deterministic_val_sampling if deterministic_val_pass else sampling, name='z')([mu, log_var])
+
+    if add_covariates is not None:
+        input_cov = Input(shape=len(add_covariates))
+        z = Concatenate(axis=-1)([z, input_cov])
 
     layer = Dense(
         layer_shape[1] * layer_shape[2] * layer_shape[3] * layer_shape[4],
@@ -240,7 +245,10 @@ def vae_reg(
         SS_tot = tf.reduce_mean(tf.square(y_true - tf.reduce_mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
-    model = Model([input], [reconstruction, reg_branch, log_var])
+    model = Model(
+        [input] if add_covariates is None else [input, input_cov],
+        [reconstruction, reg_branch, log_var],
+    )
     model.compile(
         optimizer=Adam(),
         loss=[
