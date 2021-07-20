@@ -49,8 +49,8 @@ def preprocess(
         )
 
         # random gamma correction [.5, 3]
-        gamma = np.random.randint(.5, 3)
-        img = exposure.adjust_gamma(img, gamma)
+        gamma = np.random.uniform(.5, 3)
+        img = exposure.adjust_gamma(img.astype(float), gamma)
 
         # random translation
         translated = np.zeros_like(img)
