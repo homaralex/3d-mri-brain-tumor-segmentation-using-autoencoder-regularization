@@ -166,13 +166,14 @@ def wandb_callback(
 
 def get_dfs(
         data_root,
+        df_name,
         input_shape,
         val_ratio,
         max_val,
         balance_ad,
         add_covariates,
 ):
-    df = pd.read_pickle(data_root / 'df.pkl')
+    df = pd.read_pickle(data_root / df_name)
     df = df.loc[df['Sex'] != 'X']
     df['Sex'] = df['Sex'].astype('category').cat.codes
 
@@ -218,6 +219,7 @@ def get_dfs(
 @gin.configurable
 def train(
         data_root=gin.REQUIRED,
+        df_name='df.pkl',
         val_ratio=.2,
         model_name='VAE_REG_ADNI',
         input_shape=(96, 96, 96),
@@ -247,6 +249,7 @@ def train(
     assert data_root.exists()
     df_train, df_val = get_dfs(
         data_root=data_root,
+        df_name=df_name,
         input_shape=input_shape,
         val_ratio=val_ratio,
         max_val=max_val,
