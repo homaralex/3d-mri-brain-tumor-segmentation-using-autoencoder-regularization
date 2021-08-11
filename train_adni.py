@@ -170,7 +170,8 @@ def get_dfs(
         input_shape,
         val_ratio,
         max_val,
-        balance_ad,
+        val_balance,
+
         add_covariates,
 ):
     df = pd.read_pickle(data_root / df_name)
@@ -203,7 +204,7 @@ def get_dfs(
         mean_ad_val = (df_val[target_col_name].values >= .5).mean()
         mean_ad_train = (df_train[target_col_name].values >= .5).mean()
 
-        if not balance_ad or np.abs(mean_ad_val - mean_ad_train) < .01:
+        if not val_balance or np.abs(mean_ad_val - mean_ad_train) < .01:
             print(f'Mean AD:\nTrain: {mean_ad_train}\nVal: {mean_ad_val}')
             break
 
@@ -228,7 +229,7 @@ def train(
         binary=False,
         augment=False,
         max_val=False,
-        balance_ad=True,
+        val_balance=True,
         add_covariates=None,
         batch_size=1,
         epochs=300,
@@ -253,7 +254,7 @@ def train(
         input_shape=input_shape,
         val_ratio=val_ratio,
         max_val=max_val,
-        balance_ad=balance_ad,
+        val_balance=val_balance,
         add_covariates=add_covariates,
     )
 
