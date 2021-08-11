@@ -170,8 +170,8 @@ def get_dfs(
         input_shape,
         val_ratio,
         max_val,
-        val_balance,
-
+        balance_val,
+        balance_ad_cn,
         add_covariates,
 ):
     df = pd.read_pickle(data_root / df_name)
@@ -189,11 +189,19 @@ def get_dfs(
                 row[SCAN_DIR_COL_NAME] = str(scan_dir)
                 rows.append(row)
                 break
-
     df = pd.concat(rows)
 
-    num_subjects = len(df['Subject'].unique())
+    if balance_ad_cn:
+        # keep the same number of CN and AD subjects in the data frame
+        df_grouped = df.groupby('Group')
+        df_grouped_nunique = df_grouped['Subject'].nunique()
+        remove_subjs = np.random.choice(
+            df_grouped['Subject'].unique()['CN'],
+            df_grouped_nunique['CN'] - df_grouped_nunique['AD'],
+        )
+        df = df.loc[~df['Subject'].isin(remove_subjs)]
 
+    num_subjects = len(df['Subject'].unique())
     target_col_name = 'CDGLOBAL_MAX' if max_val else 'CDGLOBAL'
     while True:
         # try to keep an equal ratio of AD subjects in both subsets of data
@@ -204,8 +212,12 @@ def get_dfs(
         mean_ad_val = (df_val[target_col_name].values >= .5).mean()
         mean_ad_train = (df_train[target_col_name].values >= .5).mean()
 
-        if not val_balance or np.abs(mean_ad_val - mean_ad_train) < .01:
-            print(f'Mean AD:\nTrain: {mean_ad_train}\nVal: {mean_ad_val}')
+        if not balance_val or np.abs(mean_ad_val - mean_ad_train) < .01:
+            print(f'Mean AD: Train: {mean_ad_train:.2f} Val: {mean_ad_val:.2f}')
+            df_train_grouped = df_train.groupby('Group')['Subject'].nunique()
+            df_val_grouped = df_val.groupby('Group')['Subject'].nunique()
+            print(f'Num AD: Train: {df_train_grouped["AD"]} Val: {df_val_grouped["AD"]}')
+            print(f'Num CN: Train: {df_train_grouped["CN"]} Val: {df_val_grouped["CN"]}')
             break
 
     if add_covariates is not None:
@@ -229,7 +241,8 @@ def train(
         binary=False,
         augment=False,
         max_val=False,
-        val_balance=True,
+        balance_val=True,
+        balance_ad_cn=False,
         add_covariates=None,
         batch_size=1,
         epochs=300,
@@ -254,7 +267,8 @@ def train(
         input_shape=input_shape,
         val_ratio=val_ratio,
         max_val=max_val,
-        val_balance=val_balance,
+        balance_val=balance_val,
+        balance_ad_cn=balance_ad_cn,
         add_covariates=add_covariates,
     )
 
