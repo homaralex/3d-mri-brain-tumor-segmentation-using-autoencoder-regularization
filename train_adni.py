@@ -23,13 +23,15 @@ def preprocessed_filename(input_shape):
     return f'masked_{"_".join(str(s) for s in input_shape)}.npy'
 
 
-@gin.configurable(allowlist=['z_score'])
+@gin.configurable(allowlist=['input_slice', 'z_score'])
 def preprocess(
         img_path,
+        input_slice,
         augment=False,
         z_score=False,
 ):
     img = np.load(img_path)
+    img = img[input_slice]
     mean, std = img.mean(), img.std()
 
     if augment:
@@ -216,8 +218,11 @@ def get_dfs(
             print(f'Mean AD: Train: {mean_ad_train:.2f} Val: {mean_ad_val:.2f}')
             df_train_grouped = df_train.groupby('Group')['Subject'].nunique()
             df_val_grouped = df_val.groupby('Group')['Subject'].nunique()
-            print(f'Num AD: Train: {df_train_grouped["AD"]} Val: {df_val_grouped["AD"]}')
-            print(f'Num CN: Train: {df_train_grouped["CN"]} Val: {df_val_grouped["CN"]}')
+            try:
+                print(f'Num AD: Train: {df_train_grouped["AD"]} Val: {df_val_grouped["AD"]}')
+                print(f'Num CN: Train: {df_train_grouped["CN"]} Val: {df_val_grouped["CN"]}')
+            except KeyError:
+                pass
             break
 
     if add_covariates is not None:
@@ -236,6 +241,7 @@ def train(
         val_ratio=.2,
         model_name='VAE_REG_ADNI',
         input_shape=(96, 96, 96),
+        input_slice=((None,), (None,), (None,)),
         data_format='channels_last',
         z_score=False,
         binary=False,
@@ -251,12 +257,17 @@ def train(
         max_samples=None,
 ):
     assert len(input_shape) == 3
+
+    input_slice = [slice(*dims) for dims in input_slice]
+    model_input_shape = np.empty(input_shape)[input_slice].shape
+
     gin.bind_parameter('data_gen.input_shape', input_shape)
     gin.bind_parameter('data_gen.batch_size', batch_size)
     gin.bind_parameter('data_gen.data_format', data_format)
     gin.bind_parameter('data_gen.binary', binary)
     gin.bind_parameter('data_gen.max_val', max_val)
     gin.bind_parameter('data_gen.add_covariates', add_covariates)
+    gin.bind_parameter('preprocess.input_slice', input_slice)
     gin.bind_parameter('preprocess.z_score', z_score)
 
     data_root = Path(data_root)
@@ -282,7 +293,7 @@ def train(
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
     model = vae_reg(
-        input_shape=input_shape,
+        input_shape=model_input_shape,
         data_format=data_format,
         binary=binary,
         add_covariates=add_covariates,
