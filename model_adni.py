@@ -7,6 +7,7 @@ from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshap
     PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout, Concatenate
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
+from tensorflow.keras.applications.resnet50 import ResNet50
 
 from utils import sampling, deterministic_val_sampling
 
@@ -125,6 +126,13 @@ def UpConv3D(
     )(layer_in)
     uc = ActivationOp(uc, activation, name='{}_a0'.format(name))
     return uc
+
+
+def r_squared(y_true, y_pred):
+    # taken from https://stackoverflow.com/questions/45250100/kerasregressor-coefficient-of-determination-r2-score
+    SS_res = tf.reduce_mean(tf.square(y_true - y_pred))
+    SS_tot = tf.reduce_mean(tf.square(y_true - tf.reduce_mean(y_true)))
+    return 1 - SS_res / (SS_tot + K.epsilon())
 
 
 @gin.configurable(name_or_fn='model', denylist=['input_shape', 'data_format'])
@@ -247,12 +255,6 @@ def vae_reg(
 
         return _num_active_dims
 
-    def r_squared(y_true, y_pred):
-        # taken from https://stackoverflow.com/questions/45250100/kerasregressor-coefficient-of-determination-r2-score
-        SS_res = tf.reduce_mean(tf.square(y_true - y_pred))
-        SS_tot = tf.reduce_mean(tf.square(y_true - tf.reduce_mean(y_true)))
-        return 1 - SS_res / (SS_tot + K.epsilon())
-
     model = Model(
         [input] if add_covariates is None else [input, input_cov],
         [reconstruction, reg_branch, log_var],
@@ -273,6 +275,53 @@ def vae_reg(
             log_var.name.split('/')[0]: num_active_dims,
             **({'classification': 'acc'} if binary else {'regression': r_squared}),
         },
+    )
+
+    return model
+
+
+@gin.configurable('resnet')
+def resnet(
+        input_shape,
+        data_format,
+        binary=False,
+        add_covariates=None,
+):
+    input = Input((224, 224, 224, 1))
+    x = Concatenate(axis=-1)([input for _ in range(3)])
+
+    resnet = ResNet50(
+        weights='imagenet',
+        include_top=False,
+        pooling='avg',
+    )
+    features = tf.keras.layers.TimeDistributed(resnet)(x)
+
+    if add_covariates is not None:
+        input_cov = Input(shape=len(add_covariates))
+        cov = Reshape((1, len(add_covariates)))(input_cov)
+        cov = keras.layers.Concatenate(axis=-2)([cov for _ in range(features.shape[1])])
+        features = Concatenate(axis=-1)([features, cov])
+
+    output = (Dense(1, activation='sigmoid') if binary else Dense(1))(features)
+    output = keras.layers.GlobalAveragePooling1D()(output)
+    output = Reshape((1,), name='classification' if binary else 'regression')(output)
+
+    def dummy_loss(y_true, y_pred):
+        return 0.
+
+    model = Model(
+        [input] if add_covariates is None else [input, input_cov],
+        [output, output, output],
+    )
+    model.compile(
+        optimizer=Adam(),
+        loss=[
+            dummy_loss,
+            'binary_crossentropy' if binary else 'mse',
+            dummy_loss
+        ],
+        metrics={**({'classification': 'acc'} if binary else {'regression': r_squared})},
     )
 
     return model
