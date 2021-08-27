@@ -239,6 +239,7 @@ def train(
         data_root=gin.REQUIRED,
         df_name='df.pkl',
         val_ratio=.2,
+        model_fn=vae_reg,
         model_name='VAE_REG_ADNI',
         input_shape=(96, 96, 96),
         input_slice=((None,), (None,), (None,)),
@@ -292,7 +293,7 @@ def train(
     # save the gin config to file
     print(gin.config.config_str(), file=(model_dir / 'config.gin').open(mode='w'))
 
-    model = vae_reg(
+    model = model_fn(
         input_shape=model_input_shape,
         data_format=data_format,
         binary=binary,
