@@ -138,6 +138,8 @@ def wandb_callback(
         data_gen,
         data_format,
 ):
+    if not model.is_reconstructing:
+        return
     origs, recs = [], []
     for i in range(3):
         for _ in range(4):

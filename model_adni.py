@@ -276,6 +276,7 @@ def vae_reg(
             **({'classification': 'acc'} if binary else {'regression': r_squared}),
         },
     )
+    model.is_reconstructing = True
 
     return model
 
@@ -286,9 +287,11 @@ def resnet(
         data_format,
         binary=False,
         add_covariates=None,
+        slices=(0, -1),
 ):
     input = Input((224, 224, 224, 1))
     x = Concatenate(axis=-1)([input for _ in range(3)])
+    x = x[:, slices[0]:slices[1]]
 
     resnet = ResNet50(
         weights='imagenet',
@@ -305,6 +308,7 @@ def resnet(
 
     output = (Dense(1, activation='sigmoid') if binary else Dense(1))(features)
     output = keras.layers.GlobalAveragePooling1D()(output)
+    dummy_output = keras.layers.Layer(name='dummy')(output)
     output = Reshape((1,), name='classification' if binary else 'regression')(output)
 
     def dummy_loss(y_true, y_pred):
@@ -312,7 +316,7 @@ def resnet(
 
     model = Model(
         [input] if add_covariates is None else [input, input_cov],
-        [output, output, output],
+        [dummy_output, output, dummy_output],
     )
     model.compile(
         optimizer=Adam(),
@@ -323,5 +327,6 @@ def resnet(
         ],
         metrics={**({'classification': 'acc'} if binary else {'regression': r_squared})},
     )
+    model.is_reconstructing = False
 
     return model
