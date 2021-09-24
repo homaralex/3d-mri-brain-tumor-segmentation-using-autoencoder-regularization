@@ -287,11 +287,12 @@ def resnet(
         data_format,
         binary=False,
         add_covariates=None,
-        slices=(0, -1),
+        slices=None,
 ):
     input = Input((224, 224, 224, 1))
     x = Concatenate(axis=-1)([input for _ in range(3)])
-    x = x[:, slices[0]:slices[1]]
+    if slices is not None:
+        x = x[:, slices[0][0]:slices[0][1], slices[1][0]:slices[1][1], slices[2][0]:slices[2][1]]
 
     resnet = ResNet50(
         weights='imagenet',
