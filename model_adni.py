@@ -8,6 +8,7 @@ from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshap
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
 
 from utils import sampling, deterministic_val_sampling
 
@@ -294,7 +295,7 @@ def resnet(
     if slices is not None:
         x = x[:, slices[0][0]:slices[0][1], slices[1][0]:slices[1][1], slices[2][0]:slices[2][1]]
 
-    resnet = ResNet50(
+    resnet = MobileNetV2(
         weights='imagenet',
         include_top=False,
         pooling='avg',
