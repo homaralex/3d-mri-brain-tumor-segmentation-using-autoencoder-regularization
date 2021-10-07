@@ -310,7 +310,7 @@ def resnet(
         features = Concatenate(axis=-1)([features, cov])
 
     output = (Dense(1, activation='sigmoid') if binary else Dense(1))(features)
-    output = (keras.layers.GlobalAveragePooling1D() if pooling == 'avg' else keras.layers.GlobalMaxPooling1D)()(output)
+    output = (keras.layers.GlobalAveragePooling1D if pooling == 'avg' else keras.layers.GlobalMaxPooling1D)()(output)
     dummy_output = keras.layers.Layer(name='dummy')(output)
     output = Reshape((1,), name='classification' if binary else 'regression')(output)
 
