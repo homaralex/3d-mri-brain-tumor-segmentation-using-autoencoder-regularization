@@ -138,6 +138,17 @@ def wandb_callback(
         data_gen,
         data_format,
 ):
+    x, _ = next(data_gen)
+    preds = []
+    for _ in range(100 // x.shape[0]):
+        x, _ = next(data_gen)
+        pred = model.predict(x)
+        preds.extend(pred[1])
+
+    preds = np.array(preds)
+    wandb.log({'predictions': wandb.Histogram(preds)})
+    wandb.log({'predictions_binary': wandb.Histogram(preds.round(), num_bins=2)})
+
     if not model.is_reconstructing:
         return
     origs, recs = [], []
