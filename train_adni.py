@@ -140,7 +140,7 @@ def wandb_callback(
 ):
     x, _ = next(data_gen)
     preds = []
-    for _ in range(100 // x.shape[0]):
+    for _ in range(100 // x[0].shape[0]):
         x, _ = next(data_gen)
         pred = model.predict(x)
         preds.extend(pred[1])

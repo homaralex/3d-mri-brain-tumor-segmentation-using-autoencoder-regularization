@@ -4,7 +4,7 @@ import tensorflow.python.keras as keras
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers import Input, Flatten, Lambda, Dense, Reshape, Activation, Conv3D, LeakyReLU, \
-    PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout, Concatenate
+    PReLU, Add, Conv3DTranspose, SpatialDropout3D, Dropout, Concatenate, Permute
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.optimizers import Adam
 from tensorflow.keras.applications.resnet50 import ResNet50
@@ -295,6 +295,8 @@ def resnet(
     x = Concatenate(axis=-1)([input for _ in range(3)])
     if slices is not None:
         x = x[:, slices[0][0]:slices[0][1], slices[1][0]:slices[1][1], slices[2][0]:slices[2][1]]
+    # TODO parameterize
+    x = Permute((3, 2, 1, 4))(x)
 
     resnet = MobileNetV2(
         weights='imagenet',
